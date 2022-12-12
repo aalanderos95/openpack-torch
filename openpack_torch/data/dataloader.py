@@ -10,6 +10,7 @@ import pandas as pd
 
 logger = getLogger(__name__)
 
+
 def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
     """Load keypoints from JSON.
 
@@ -44,7 +45,7 @@ def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_imu_all(
     paths: Union[Tuple[Path, ...], List[Path]],
-    channels = [],
+    channels=[],
     th: int = 30,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load IMU data from CSVs.
@@ -74,7 +75,7 @@ def load_imu_all(
     for path in paths:
         df = pd.read_csv(path)
         logger.debug(f"load IMU data from {path} -> df={df.shape}")
-        
+
         # NOTE: Error handling : ATR01 in U0101-S0500 has timestamp error.
         #       See an issue #87.
         if str(path).endswith("/U0101/atr/atr01/S0500.csv"):
@@ -90,29 +91,31 @@ def load_imu_all(
 
         if ts[0] > maxminunixtime:
             maxminunixtime = ts[0]
-        if(minmaxunixtime == 0):
-            minmaxunixtime = ts[len(ts)-1];
+        if (minmaxunixtime == 0):
+            minmaxunixtime = ts[len(ts) - 1]
         if ts[len(ts) - 1] < minmaxunixtime:
             minmaxunixtime = ts[len(ts) - 1]
         x = df[channels[contPaths]].values.T
-
         ts_list.append(ts)
         x_ret.append(x)
         contPaths = contPaths + 1
-
-    min_len = min([len(ts) for ts in ts_list])
     ts_ret = None
-    
-    #REMUESTREO POR MIN MAXIMOS Y MEDIA
+
+    # REMUESTREO POR MIN MAXIMOS Y MEDIA
     maxminunixtime = str(maxminunixtime)
     minmaxunixtime = str(minmaxunixtime)
-    maxminunixtime = np.int64(maxminunixtime[0:len(maxminunixtime)-3] + '000')
-    minmaxunixtime = np.int64(minmaxunixtime[0:len(minmaxunixtime)-3] + '000')
+    maxminunixtime = np.int64(
+        maxminunixtime[0:len(maxminunixtime) - 3] + '000')
+    minmaxunixtime = np.int64(
+        minmaxunixtime[0:len(minmaxunixtime) - 3] + '000')
 
     arrayUnixTimes = np.arange(maxminunixtime, minmaxunixtime, 250)
-    
+
     for i in range(len(paths)):
-        x_ret[i] = remuestrear(arrayUnixTimes,x_ret[i], ts_list[i])
+
+        logger.info(f"Start resample for path: {paths[i]}.")
+        x_ret[i] = resample(arrayUnixTimes, x_ret[i], ts_list[i])
+        logger.info(f"Finish resample for path: {paths[i]}.")
         ts_list[i] = arrayUnixTimes
 
         if ts_ret is None:
@@ -128,28 +131,34 @@ def load_imu_all(
     x_ret = np.concatenate(x_ret, axis=0)
     return ts_ret, x_ret
 
-def remuestrear (
+
+def resample(
     unixtimesFinal: np.ndarray,
-    xs: np.ndarray,    
+    xs: np.ndarray,
     unixTimesActual: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.int64]:
-    xs_return = np.empty([len(xs),len(unixtimesFinal)]);   
-    X_train = pd.DataFrame()
-    X_trainMean = pd.DataFrame();
+    xs_return = np.empty([len(xs), len(unixtimesFinal)])
 
     for x in range(len(xs)):
-        data = {'unixtime':unixTimesActual, 'x':xs[x,:]};
+        X_train = pd.DataFrame()
+        X_trainMean = pd.DataFrame()
+        data = {'unixtime': unixTimesActual, 'value': xs[x, :]}
         df = pd.DataFrame(data=data, index=unixTimesActual)
-        for unix in range(len(unixtimesFinal)-1): 
-            x_list = []            
-            dfMean = df.query(f"`unixtime` >= {unixtimesFinal[unix]} and `unixtime` <={unixtimesFinal[unix+1]}")
-            x_list.append(dfMean.x)
-            #Obtener Medias
-            X_train['x_mean'] = pd.Series(x_list).apply(lambda x: x.mean()) 
-            X_trainMean = pd.concat([X_trainMean,X_train],ignore_index = True)# X_trainMean.concat(X_train, ignore_index = True)
-        
 
-    return xs_return 
+        for unix in range(len(unixtimesFinal) - 1):
+            x_list = []
+            dfMean = df.query(
+                f"`unixtime` >= {unixtimesFinal[unix]} and `unixtime` <={unixtimesFinal[unix+1]}")
+            x_list.append(dfMean.value)
+            # Obtener Medias
+            X_train['x_mean'] = pd.Series(x_list).apply(
+                lambda value: value.mean())
+            # X_trainMean.concat(X_train, ignore_index = True)
+            X_trainMean = pd.concat([X_trainMean, X_train], ignore_index=True)
+
+        xs_return[x] = X_trainMean.transpose()
+
+    return xs_return
 
 
 def load_imu(

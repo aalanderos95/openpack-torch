@@ -320,35 +320,36 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                             channels.append(["acc_x", "acc_y", "acc_z"])
                         else:
                             channels[cont] += ["acc_x", "acc_y", "acc_z"]
+
                     cont = cont + 1
 
-                ts_sess, x_sess =  load_imu_all(
-                    paths_imu,
-                    channels)
+            ts_sess, x_sess = load_imu_all(
+                paths_imu,
+                channels)
 
-                if submission:
-                    # For set dummy data.
-                    label = np.zeros((len(ts_sess),), dtype=np.int64)
-                else:
-                    path = Path(
-                        cfg.dataset.annotation.path.dir,
-                        cfg.dataset.annotation.path.fname
-                    )
-                    df_label = optk.data.load_and_resample_operation_labels(
-                        path, ts_sess, classes=self.classes)
-                    label = df_label["act_idx"].values
+            if submission:
+                # For set dummy data.
+                label = np.zeros((len(ts_sess),), dtype=np.int64)
+            else:
+                path = Path(
+                    cfg.dataset.annotation.path.dir,
+                    cfg.dataset.annotation.path.fname
+                )
+                df_label = optk.data.load_and_resample_operation_labels(
+                    path, ts_sess, classes=self.classes)
+                label = df_label["act_idx"].values
 
-                data.append({
-                    "user": user,
-                    "session": session,
-                    "data": x_sess,
-                    "label": label,
-                    "unixtime": ts_sess,
-                })
+            data.append({
+                "user": user,
+                "session": session,
+                "data": x_sess,
+                "label": label,
+                "unixtime": ts_sess,
+            })
 
-                seq_len = ts_sess.shape[0]
-                index += [dict(seq=seq_idx, seg=seg_idx, pos=pos)
-                          for seg_idx, pos in enumerate(range(0, seq_len, window))]
+            seq_len = ts_sess.shape[0]
+            index += [dict(seq=seq_idx, seg=seg_idx, pos=pos)
+                      for seg_idx, pos in enumerate(range(0, seq_len, window))]
         self.data = data
         self.index = tuple(index)
 
