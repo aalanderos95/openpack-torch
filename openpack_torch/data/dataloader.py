@@ -1,0 +1,256 @@
+"""``dataloader`` provide utility function to load files saved in OpenPack dataset format.
+"""
+import json
+from logging import getLogger
+from pathlib import Path
+from typing import List, Tuple, Union
+
+import numpy as np
+import pandas as pd
+
+logger = getLogger(__name__)
+
+def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
+    """Load keypoints from JSON.
+
+    Args:
+        path (Path): path to a target JSON file.
+    Returns:
+        Tuple[np.ndarray, np.ndarray]:
+            * T (np.ndarray): unixtime for each frame.
+            * X (np.ndarray): xy-cordinates of keypoints. and the score of corresponding
+                prediction. shape=(3, FRAMES, NODE). The first dim is corresponding to
+                [x-cordinate, y-cordinate, score].
+    Todo:
+        * Handle the JSON file that contains keypoints from multiple people.
+    """
+    with open(path, "r") as f:
+        data = json.load(f)
+    logger.debug(f"load keypoints from {path}")
+
+    T, X = [], []
+    for i, d in enumerate(data["annotations"][:]):
+        ut = d.get("image_id", -1)
+        kp = np.array(d.get("keypoints", []))
+
+        X.append(kp.T)
+        T.append(ut)
+
+    T = np.array(T)
+    X = np.stack(X, axis=1)
+
+    return T, X
+
+
+def load_imu_all(
+    paths: Union[Tuple[Path, ...], List[Path]],
+    channels = [],
+    th: int = 30,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Load IMU data from CSVs.
+
+    Args:
+        paths (Union[Tuple[Path, ...], List[Path]]): list of paths to target CSV.
+            (e.g., [**/atr01/S0100.csv])
+        use_acc (bool, optional): include acceleration signal (e.g., ``acc_x, acc_y, acc_z``).
+            Defaults to True.
+        use_gyro (bool, optional): include gyro scope signal (e.g., ``gyro_x, gyro_y, gyro_z``).
+            Defaults to False.
+        use_quat (bool, optional): include quaternion data(e.g.,
+            ``quat_w, quat_x, quat_y, quat_z``). Defaults to False.
+        th (int, optional): threshold of timestamp difference [ms].
+            Default. 30 [ms] (<= 1 sample)
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: unixtime and loaded sensor data.
+    """
+    assert isinstance(paths, (tuple, list)), (
+        f"the first argument `paths` expects tuple of Path, not {type(paths)}."
+    )
+
+    ts_ret, x_ret, ts_list = None, [], []
+    contPaths = 0
+    maxminunixtime = 0
+    minmaxunixtime = 0
+    for path in paths:
+        df = pd.read_csv(path)
+        logger.debug(f"load IMU data from {path} -> df={df.shape}")
+        
+        # NOTE: Error handling : ATR01 in U0101-S0500 has timestamp error.
+        #       See an issue #87.
+        if str(path).endswith("/U0101/atr/atr01/S0500.csv"):
+            df = df.drop(0, axis=0)
+            df = df.reset_index(drop=True)
+
+        if "atr" in str(path):
+            ts = df["unixtime"].values
+        else:
+            # Rename Column
+            df = df.rename(columns={"time": "unixtime"})
+            ts = df["unixtime"].values
+
+        if ts[0] > maxminunixtime:
+            maxminunixtime = ts[0]
+        if(minmaxunixtime == 0):
+            minmaxunixtime = ts[len(ts)-1];
+        if ts[len(ts) - 1] < minmaxunixtime:
+            minmaxunixtime = ts[len(ts) - 1]
+        x = df[channels[contPaths]].values.T
+
+        ts_list.append(ts)
+        x_ret.append(x)
+        contPaths = contPaths + 1
+
+    min_len = min([len(ts) for ts in ts_list])
+    ts_ret = None
+    
+    #REMUESTREO POR MIN MAXIMOS Y MEDIA
+    maxminunixtime = str(maxminunixtime)
+    minmaxunixtime = str(minmaxunixtime)
+    maxminunixtime = np.int64(maxminunixtime[0:len(maxminunixtime)-3] + '000')
+    minmaxunixtime = np.int64(minmaxunixtime[0:len(minmaxunixtime)-3] + '000')
+
+    arrayUnixTimes = np.arange(maxminunixtime, minmaxunixtime, 250)
+    
+    for i in range(len(paths)):
+        x_ret[i] = remuestrear(arrayUnixTimes,x_ret[i], ts_list[i])
+        ts_list[i] = arrayUnixTimes
+
+        if ts_ret is None:
+            ts_ret = ts_list[i]
+        else:
+            # Check whether the timestamps are equal or not.
+            delta = np.abs(ts_list[i] - ts_ret)
+            assert delta.max() < th, (
+                f"max difference is {delta.max()} [ms], "
+                f"but difference smaller than th={th} is allowed."
+            )
+
+    x_ret = np.concatenate(x_ret, axis=0)
+    return ts_ret, x_ret
+
+def remuestrear (
+    unixtimesFinal: np.ndarray,
+    xs: np.ndarray,    
+    unixTimesActual: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.int64]:
+    xs_return = np.empty([len(xs),len(unixtimesFinal)]);   
+    X_train = pd.DataFrame()
+    X_trainMean = pd.DataFrame();
+
+    for x in range(len(xs)):
+        data = {'unixtime':unixTimesActual, 'x':xs[x,:]};
+        df = pd.DataFrame(data=data, index=unixTimesActual)
+        for unix in range(len(unixtimesFinal)-1): 
+            x_list = []            
+            dfMean = df.query(f"`unixtime` >= {unixtimesFinal[unix]} and `unixtime` <={unixtimesFinal[unix+1]}")
+            x_list.append(dfMean.x)
+            #Obtener Medias
+            X_train['x_mean'] = pd.Series(x_list).apply(lambda x: x.mean()) 
+            X_trainMean = pd.concat([X_trainMean,X_train],ignore_index = True)# X_trainMean.concat(X_train, ignore_index = True)
+        
+
+    return xs_return 
+
+
+def load_imu(
+    paths: Union[Tuple[Path, ...], List[Path]],
+    use_acc: bool = True,
+    use_gyro: bool = False,
+    use_quat: bool = False,
+    th: int = 30,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Load IMU data from CSVs.
+
+    Args:
+        paths (Union[Tuple[Path, ...], List[Path]]): list of paths to target CSV.
+            (e.g., [**/atr01/S0100.csv])
+        use_acc (bool, optional): include acceleration signal (e.g., ``acc_x, acc_y, acc_z``).
+            Defaults to True.
+        use_gyro (bool, optional): include gyro scope signal (e.g., ``gyro_x, gyro_y, gyro_z``).
+            Defaults to False.
+        use_quat (bool, optional): include quaternion data(e.g.,
+            ``quat_w, quat_x, quat_y, quat_z``). Defaults to False.
+        th (int, optional): threshold of timestamp difference [ms].
+            Default. 30 [ms] (<= 1 sample)
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: unixtime and loaded sensor data.
+    """
+    assert isinstance(paths, (tuple, list)), (
+        f"the first argument `paths` expects tuple of Path, not {type(paths)}."
+    )
+
+    channels = []
+    if use_acc:
+        channels += ["acc_x", "acc_y", "acc_z"]
+    if use_gyro:
+        channels += ["gyro_x", "gyro_y", "gyro_z"]
+    if use_quat:
+        channels += ["quat_w", "quat_x", "quat_y", "quat_z"]
+
+    ts_ret, x_ret, ts_list = None, [], []
+    for path in paths:
+        df = pd.read_csv(path)
+        logger.debug(f"load IMU data from {path} -> df={df.shape}")
+        assert set(channels) < set(df.columns)
+
+        # NOTE: Error handling : ATR01 in U0101-S0500 has timestamp error.
+        #       See an issue #87.
+        if str(path).endswith("/U0101/atr/atr01/S0500.csv"):
+            df = df.drop(0, axis=0)
+            df = df.reset_index(drop=True)
+
+        ts = df["unixtime"].values
+        x = df[channels].values.T
+
+        ts_list.append(ts)
+        x_ret.append(x)
+
+    min_len = min([len(ts) for ts in ts_list])
+    ts_ret = None
+    for i in range(len(paths)):
+        x_ret[i] = x_ret[i][:, :min_len]
+        ts_list[i] = ts_list[i][:min_len]
+
+        if ts_ret is None:
+            ts_ret = ts_list[i]
+        else:
+            # Check whether the timestamps are equal or not.
+            delta = np.abs(ts_list[i] - ts_ret)
+            assert delta.max() < th, (
+                f"max difference is {delta.max()} [ms], "
+                f"but difference smaller than th={th} is allowed."
+            )
+
+    x_ret = np.concatenate(x_ret, axis=0)
+    return ts_ret, x_ret
+
+
+def load_and_resample_scan_log(
+    path: Path,
+    unixtimes_ms: np.ndarray,
+) -> np.ndarray:
+    """Load scan log data such as HT, and make binary vector for given timestamps.
+    Elements that have the same timestamp in second precision are marked as 1.
+    Other values are set to 0.
+
+    Args:
+        path (Path): path to a scan log CSV file.
+        unixtimes_ms (np.ndarray):  unixtime seqeuence (milli-scond precision).
+            shape=(T,).
+
+    Returns:
+        np.ndarray: binary 1d vector.
+    """
+    assert unixtimes_ms.ndim == 1
+    df = pd.read_csv(path)
+    logger.info(f"load scan log from {path} -> df={df.shape}")
+
+    unixtimes_sec = unixtimes_ms // 1000
+
+    X_log = np.zeros(len(unixtimes_ms)).astype(np.int32)
+    for utime_ms in df["unixtime"].values:
+        utime_sec = utime_ms // 1000
+        ind = np.where(unixtimes_sec == utime_sec)[0]
+        X_log[ind] = 1
+
+    return X_log
