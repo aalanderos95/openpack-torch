@@ -137,7 +137,7 @@ def resample(
     xs: np.ndarray,
     unixTimesActual: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.int64]:
-    xs_return = np.empty([len(xs), len(unixtimesFinal)])
+    xs_return = np.empty([len(xs), len(unixtimesFinal) - 1])
 
     for x in range(len(xs)):
         X_train = pd.DataFrame()
@@ -155,7 +155,6 @@ def resample(
                 lambda value: value.mean())
             # X_trainMean.concat(X_train, ignore_index = True)
             X_trainMean = pd.concat([X_trainMean, X_train], ignore_index=True)
-
         xs_return[x] = X_trainMean.transpose()
 
     return xs_return
