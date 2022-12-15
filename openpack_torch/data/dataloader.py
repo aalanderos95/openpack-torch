@@ -89,7 +89,7 @@ def load_imu_all(
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
             # 30L corresponds to 30 milliseconds
-            df = df.resample(muestreo).mean(numeric_only=True)
+            df = df.resample(muestreo, on='Resample').mean(numeric_only=True)
             #df = df.resample('10L').interpolate();
             # df.isnull().sum()
             #df = df.dropna()
@@ -105,7 +105,7 @@ def load_imu_all(
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
             # 30L corresponds to 30 milliseconds
-            df = df.resample(muestreo).mean(numeric_only=True)
+            df = df.resample(muestreo, on='Resample').mean(numeric_only=True)
             #df = df.resample('33L').interpolate();
             # df.isnull().sum()
             #df.replace(np.nan, 0)
