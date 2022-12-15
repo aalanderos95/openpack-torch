@@ -1,5 +1,6 @@
 """``dataloader`` provide utility function to load files saved in OpenPack dataset format.
 """
+import datetime as dt
 import json
 from logging import getLogger
 from pathlib import Path
@@ -72,6 +73,7 @@ def load_imu_all(
     contPaths = 0
     maxminunixtime = 0
     minmaxunixtime = 0
+    muestreo = '50L'
     for path in paths:
         df = pd.read_csv(path)
         logger.debug(f"load IMU data from {path} -> df={df.shape}")
@@ -83,38 +85,96 @@ def load_imu_all(
             df = df.reset_index(drop=True)
 
         if "atr" in str(path):
+            # RESAMPLE
+            df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+            df = df.set_index('Resample')
+            # 30L corresponds to 30 milliseconds
+            df = df.resample(muestreo).mean(numeric_only=True)
+            #df = df.resample('10L').interpolate();
+            # df.isnull().sum()
+            #df = df.dropna()
+            df.replace(np.nan, 0)
+            df['unixtime'] = df.index.to_series().apply(
+                lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
+
         else:
             # Rename Column
             df = df.rename(columns={"time": "unixtime"})
+            # RESAMPLE
+            df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+            df = df.set_index('Resample')
+            # 30L corresponds to 30 milliseconds
+            df = df.resample(muestreo).mean(numeric_only=True)
+            #df = df.resample('33L').interpolate();
+            # df.isnull().sum()
+            #df.replace(np.nan, 0)
+            df['unixtime'] = df.index.to_series().apply(
+                lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
-
         if ts[0] > maxminunixtime:
             maxminunixtime = ts[0]
         if (minmaxunixtime == 0):
             minmaxunixtime = ts[len(ts) - 1]
         if ts[len(ts) - 1] < minmaxunixtime:
             minmaxunixtime = ts[len(ts) - 1]
+
         x = df[channels[contPaths]].values.T
         ts_list.append(ts)
         x_ret.append(x)
         contPaths = contPaths + 1
     ts_ret = None
 
-    # REMUESTREO POR MIN MAXIMOS Y MEDIA
-    maxminunixtime = str(maxminunixtime)
-    minmaxunixtime = str(minmaxunixtime)
-    maxminunixtime = np.int64(
-        maxminunixtime[0:len(maxminunixtime) - 3] + '000')
-    minmaxunixtime = np.int64(
-        minmaxunixtime[0:len(minmaxunixtime) - 3] + '000')
+    fT = False
+    newts_list = []
+    newx_ret = []
+    ts_list_reshape = []
+    for i in range(len(x_ret)):
+        x_ret_reshape = []
+        for j in range(len(x_ret[i])):
+            X_train = pd.DataFrame()
+            X_trainMean = pd.DataFrame()
+            ts_train = pd.DataFrame()
+            ts_trainMean = pd.DataFrame()
+            data = {'unixtime': ts_list[i], 'value': x_ret[i][j, :]}
+            df = pd.DataFrame(data=data)
+            dfMean = df.query(
+                f"`unixtime` >= {maxminunixtime} and `unixtime` <={minmaxunixtime}")
 
-    arrayUnixTimes = np.arange(maxminunixtime, minmaxunixtime, 250)
+            x_list = list(x for x in dfMean['value'].to_numpy())
+            tsN_list = list(x for x in dfMean['unixtime'].to_numpy())
+
+            X_train['value'] = pd.Series(x_list)
+            ts_train['unixtime'] = pd.Series(tsN_list)
+            X_trainMean = pd.concat([X_trainMean, X_train], ignore_index=True)
+            ts_trainMean = pd.concat(
+                [ts_trainMean, ts_train], ignore_index=True)
+
+            if not fT:
+                #x_ret_reshape = [len(x_ret),len(X_trainMean)]
+                ts_list_reshape = ts_trainMean.values.T
+                fT = True
+            x_ret_reshape.append(X_trainMean.values.T[0])
+        newts_list.append(ts_list_reshape[0])
+        newx_ret.append(x_ret_reshape)
+    x_ret = newx_ret
+    ts_list = newts_list
 
     for i in range(len(paths)):
+        #x_ret[i] = x_ret[i][:, :min_len]
+        #ts_list[i] = ts_list[i][:min_len]
 
-        logger.info(f"Start resample for path: {paths[i]}.")
-        x_ret[i] = resample(arrayUnixTimes, x_ret[i], ts_list[i])
+        if ts_ret is None:
+            ts_ret = ts_list[i]
+        else:
+            # Check whether the timestamps are equal or not.
+            delta = np.abs(ts_list[i] - ts_ret)
+            assert delta.max() < th, (
+                f"max difference is {delta.max()} [ms], "
+                f"but difference smaller than th={th} is allowed."
+            )
+        """logger.info(f"Start resample for path: {paths[i]}.")
+        x_ret[i] = resample(arrayUnixTimes,x_ret[i], ts_list[i])
         logger.info(f"Finish resample for path: {paths[i]}.")
         ts_list[i] = arrayUnixTimes
 
@@ -127,16 +187,41 @@ def load_imu_all(
                 f"max difference is {delta.max()} [ms], "
                 f"but difference smaller than th={th} is allowed."
             )
-
+        """
     x_ret = np.concatenate(x_ret, axis=0)
     return ts_ret, x_ret
+
+
+def remuestrear(
+    xs: np.ndarray,
+    unixtimes: np.ndarray,
+    maxminunixtime_ms: np.int64,
+    minmaxunixtime_ms: np.int64,
+) -> Tuple[np.ndarray, np.ndarray, np.int64]:
+    # Inicializar maxminunixtime_ms a 0
+    restInt = 0
+    # Remuestrear unixtimes
+    for i in range(len(unixtimes)):
+        if (unixtimes[i] > maxminunixtime_ms):
+            unixtimes = unixtimes[i:]
+            xs = xs[:, i:]
+            restInt = i
+            break
+
+    for i in range(len(unixtimes), 0, -1):
+        if (unixtimes[i - 1] < minmaxunixtime_ms):
+            unixtimes = unixtimes[:i - 1]
+            xs = xs[:, :i - 1]
+            restInt = restInt + (i - 1)
+            break
+    return xs, unixtimes, restInt
 
 
 def resample(
     unixtimesFinal: np.ndarray,
     xs: np.ndarray,
     unixTimesActual: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.int64]:
+) -> Tuple[np.ndarray]:
     xs_return = np.empty([len(xs), len(unixtimesFinal) - 1])
 
     for x in range(len(xs)):

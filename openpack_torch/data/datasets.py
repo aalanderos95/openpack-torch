@@ -108,9 +108,7 @@ class OpenPackImu(torch.utils.data.Dataset):
 
             ts_sess, x_sess = optk.data.load_imu(
                 paths_imu,
-                use_acc=cfg.dataset.stream.acc,
-                use_gyro=cfg.dataset.stream.gyro,
-                use_quat=cfg.dataset.stream.quat)
+                use_acc=True)
 
             if submission:
                 # For set dummy data.
@@ -137,6 +135,15 @@ class OpenPackImu(torch.utils.data.Dataset):
                       for seg_idx, pos in enumerate(range(0, seq_len, window))]
         self.data = data
         self.index = tuple(index)
+        print(
+            "IMPRESION",
+            "SESSION:",
+            session,
+            ", USER:",
+            user,
+            len(data),
+            len(x_sess),
+            len(label))
 
     def preprocessing(self) -> None:
         """This method is called after ``load_dataset()`` and apply preprocessing to loaded data.
@@ -320,7 +327,6 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                             channels.append(["acc_x", "acc_y", "acc_z"])
                         else:
                             channels[cont] += ["acc_x", "acc_y", "acc_z"]
-
                     cont = cont + 1
 
             ts_sess, x_sess = load_imu_all(
@@ -339,13 +345,13 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                     path, ts_sess, classes=self.classes)
                 label = df_label["act_idx"].values
 
-            data.append({
-                "user": user,
-                "session": session,
-                "data": x_sess,
-                "label": label,
-                "unixtime": ts_sess,
-            })
+                data.append({
+                    "user": user,
+                    "session": session,
+                    "data": x_sess,
+                    "label": label,
+                    "unixtime": ts_sess,
+                })
 
             seq_len = ts_sess.shape[0]
             index += [dict(seq=seq_idx, seg=seg_idx, pos=pos)
@@ -369,7 +375,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
 
     def __str__(self) -> str:
         s = (
-            "OpenPackImu("
+            "OpenPackImuMulti("
             f"index={len(self.index)}, "
             f"num_sequence={len(self.data)}, "
             f"submission={self.submission}"
