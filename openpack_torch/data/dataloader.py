@@ -11,7 +11,6 @@ import pandas as pd
 
 logger = getLogger(__name__)
 
-
 def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
     """Load keypoints from JSON.
 
@@ -46,7 +45,7 @@ def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_imu_all(
     paths: Union[Tuple[Path, ...], List[Path]],
-    channels=[],
+    channels = [],
     th: int = 30,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load IMU data from CSVs.
@@ -73,11 +72,13 @@ def load_imu_all(
     contPaths = 0
     maxminunixtime = 0
     minmaxunixtime = 0
+    muestreoN = 50
     muestreo = '50L'
+    NoUtilizar = False;
     for path in paths:
         df = pd.read_csv(path)
         logger.debug(f"load IMU data from {path} -> df={df.shape}")
-
+        
         # NOTE: Error handling : ATR01 in U0101-S0500 has timestamp error.
         #       See an issue #87.
         if str(path).endswith("/U0101/atr/atr01/S0500.csv"):
@@ -85,92 +86,90 @@ def load_imu_all(
             df = df.reset_index(drop=True)
 
         if "atr" in str(path):
-            # RESAMPLE
+            #RESAMPLE
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
-
-            # 30L corresponds to 30 milliseconds
+            
+            #30L corresponds to 30 milliseconds
             #df = df.resample(muestreo,on='Resample').mean(numeric_only=True)
-            df = df.reset_index().groupby(
-                pd.Grouper(
-                    freq=muestreo,
-                    key='Resample')).mean(
-                numeric_only=True)
+            df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
             #df = df.resample('10L').interpolate();
-            # df.isnull().sum()
+            #df.isnull().sum()
             #df = df.dropna()
             #df.replace(np.nan, 0)
-            df['unixtime'] = df.index.to_series().apply(
-                lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+            df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
         else:
             # Rename Column
             df = df.rename(columns={"time": "unixtime"})
-            # RESAMPLE
+            if(len(df) == 0):
+                #IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS WILL BE GENERATED WITH THE COLUMN WITH THE CURRENT UNIX
+                min = str(maxminunixtime);
+                max = str(minmaxunixtime);
+                min = np.int64(min[0:len(min)-3] + '000')
+                max = np.int64(max[0:len(max)-3] + '000')
+                arrayUnixTimes = np.arange(min,max,muestreoN);
+                ts_df = pd.DataFrame()
+                ts_df['unixtime'] = pd.Series(arrayUnixTimes)
+                df = pd.concat([df,ts_df],ignore_index = True)
+                df = df.fillna(0)        
+            #RESAMPLE
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
-            # 30L corresponds to 30 milliseconds
-            df = df.reset_index().groupby(
-                pd.Grouper(
-                    freq=muestreo,
-                    key='Resample')).mean(
-                numeric_only=True)
+            #30L corresponds to 30 milliseconds
+            df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
             #df = df.resample('33L').interpolate();
-            # df.isnull().sum()
+            #df.isnull().sum()
             #df.replace(np.nan, 0)
-            df['unixtime'] = df.index.to_series().apply(
-                lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+            df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
-        if len(ts) != 0:
-            if ts[0] > maxminunixtime:
-                maxminunixtime = ts[0]
-            if (minmaxunixtime == 0):
-                minmaxunixtime = ts[len(ts) - 1]
-            if ts[len(ts) - 1] < minmaxunixtime:
-                minmaxunixtime = ts[len(ts) - 1]
+        
+        if ts[0] > maxminunixtime:
+            maxminunixtime = ts[0]
+        if(minmaxunixtime == 0):
+            minmaxunixtime = ts[len(ts)-1];
+        if ts[len(ts) - 1] < minmaxunixtime:
+            minmaxunixtime = ts[len(ts) - 1]
 
-            x = df[channels[contPaths]].values.T
-            ts_list.append(ts)
-            x_ret.append(x)
-            contPaths = contPaths + 1
-    min_len = min([len(ts) for ts in ts_list])
+        x = df[channels[contPaths]].values.T
+        ts_list.append(ts)
+        x_ret.append(x)
+        contPaths = contPaths + 1
     ts_ret = None
-
+    
     fT = False
-    newts_list = []
-    newx_ret = []
-    ts_list_reshape = []
+    newts_list = [];
+    newx_ret = [];
+    ts_list_reshape = [];
     for i in range(len(x_ret)):
         x_ret_reshape = []
-        for j in range(len(x_ret[i])):
+        for j in range(len(x_ret[i])):   
             X_train = pd.DataFrame()
-            X_trainMean = pd.DataFrame()
+            X_trainMean = pd.DataFrame();  
             ts_train = pd.DataFrame()
-            ts_trainMean = pd.DataFrame()
-            data = {'unixtime': ts_list[i], 'value': x_ret[i][j, :]}
+            ts_trainMean = pd.DataFrame();    
+            data = {'unixtime':ts_list[i], 'value':x_ret[i][j,:]};
             df = pd.DataFrame(data=data)
-            dfMean = df.query(
-                f"`unixtime` >= {maxminunixtime} and `unixtime` <={minmaxunixtime}")
-
+            dfMean = df.query(f"`unixtime` >= {maxminunixtime} and `unixtime` <={minmaxunixtime}")
+            
             x_list = list(x for x in dfMean['value'].to_numpy())
             tsN_list = list(x for x in dfMean['unixtime'].to_numpy())
 
             X_train['value'] = pd.Series(x_list)
-            ts_train['unixtime'] = pd.Series(tsN_list)
-            X_trainMean = pd.concat([X_trainMean, X_train], ignore_index=True)
-            ts_trainMean = pd.concat(
-                [ts_trainMean, ts_train], ignore_index=True)
+            ts_train['unixtime'] = pd.Series(tsN_list);
+            X_trainMean = pd.concat([X_trainMean,X_train],ignore_index = True)
+            ts_trainMean = pd.concat([ts_trainMean,ts_train],ignore_index = True)
 
-            if not fT:
+            if fT == False:
                 #x_ret_reshape = [len(x_ret),len(X_trainMean)]
                 ts_list_reshape = ts_trainMean.values.T
-                fT = True
-            x_ret_reshape.append(X_trainMean.values.T[0])
+                fT = True  
+            x_ret_reshape.append(X_trainMean.values.T[0]);
         newts_list.append(ts_list_reshape[0])
-        newx_ret.append(x_ret_reshape)
-    x_ret = newx_ret
-    ts_list = newts_list
-
+        newx_ret.append(x_ret_reshape);
+    x_ret = newx_ret;
+    ts_list = newts_list;
+    
     for i in range(contPaths):
         #x_ret[i] = x_ret[i][:, :min_len]
         #ts_list[i] = ts_list[i][:min_len]
@@ -202,62 +201,55 @@ def load_imu_all(
     x_ret = np.concatenate(x_ret, axis=0)
     return ts_ret, x_ret
 
-
-def remuestrear(
+def remuestrear (
     xs: np.ndarray,
     unixtimes: np.ndarray,
-    maxminunixtime_ms: np.int64,
+    maxminunixtime_ms: np.int64,    
     minmaxunixtime_ms: np.int64,
 ) -> Tuple[np.ndarray, np.ndarray, np.int64]:
-    # Inicializar maxminunixtime_ms a 0
-    restInt = 0
-    # Remuestrear unixtimes
-    for i in range(len(unixtimes)):
-        if (unixtimes[i] > maxminunixtime_ms):
-            unixtimes = unixtimes[i:]
-            xs = xs[:, i:]
-            restInt = i
-            break
+  #Inicializar maxminunixtime_ms a 0
+  restInt = 0;
+  #Remuestrear unixtimes  
+  for i in range(len(unixtimes)):   
+    if(unixtimes[i] > maxminunixtime_ms):      
+      unixtimes = unixtimes[i:]
+      xs = xs[:,i:]
+      restInt = i;
+      break;
+  
+  for i in range(len(unixtimes),0,-1):
+    if(unixtimes[i-1] < minmaxunixtime_ms):
+      unixtimes= unixtimes[:i-1]
+      xs = xs[:,:i-1]
+      restInt = restInt + (i-1);
+      break;   
 
-    for i in range(len(unixtimes), 0, -1):
-        if (unixtimes[i - 1] < minmaxunixtime_ms):
-            unixtimes = unixtimes[:i - 1]
-            xs = xs[:, :i - 1]
-            restInt = restInt + (i - 1)
-            break
-
-    print(xs.shape)
-    print(unixtimes.shape)
-    return xs, unixtimes, restInt
-
-
-def resample(
+  print(xs.shape)
+  print(unixtimes.shape)
+  return xs, unixtimes, restInt
+def resample (
     unixtimesFinal: np.ndarray,
-    xs: np.ndarray,
+    xs: np.ndarray,    
     unixTimesActual: np.ndarray,
 ) -> Tuple[np.ndarray]:
-    xs_return = np.empty([len(xs), len(unixtimesFinal) - 1])
+    xs_return = np.empty([len(xs),len(unixtimesFinal)-1]);   
 
     for x in range(len(xs)):
         X_train = pd.DataFrame()
-        X_trainMean = pd.DataFrame()
-        data = {'unixtime': unixTimesActual, 'value': xs[x, :]}
+        X_trainMean = pd.DataFrame();
+        data = {'unixtime':unixTimesActual, 'value':xs[x,:]};
         df = pd.DataFrame(data=data, index=unixTimesActual)
-
-        for unix in range(len(unixtimesFinal) - 1):
-            x_list = []
-            dfMean = df.query(
-                f"`unixtime` >= {unixtimesFinal[unix]} and `unixtime` <={unixtimesFinal[unix+1]}")
+        
+        for unix in range(len(unixtimesFinal)-1): 
+            x_list = []            
+            dfMean = df.query(f"`unixtime` >= {unixtimesFinal[unix]} and `unixtime` <={unixtimesFinal[unix+1]}")
             x_list.append(dfMean.value)
-            # Obtener Medias
-            X_train['x_mean'] = pd.Series(x_list).apply(
-                lambda value: value.mean())
-            # X_trainMean.concat(X_train, ignore_index = True)
-            X_trainMean = pd.concat([X_trainMean, X_train], ignore_index=True)
-        xs_return[x] = X_trainMean.transpose()
+            #Obtener Medias
+            X_train['x_mean'] = pd.Series(x_list).apply(lambda value: value.mean()) 
+            X_trainMean = pd.concat([X_trainMean,X_train],ignore_index = True)# X_trainMean.concat(X_train, ignore_index = True)   
+        xs_return[x] = X_trainMean.transpose();
 
-    return xs_return
-
+    return xs_return 
 
 def load_imu(
     paths: Union[Tuple[Path, ...], List[Path]],
@@ -330,7 +322,6 @@ def load_imu(
 
     x_ret = np.concatenate(x_ret, axis=0)
     return ts_ret, x_ret
-
 
 def load_and_resample_scan_log(
     path: Path,
