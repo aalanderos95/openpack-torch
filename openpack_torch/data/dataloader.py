@@ -88,16 +88,21 @@ def load_imu_all(
             # RESAMPLE
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
+
             # 30L corresponds to 30 milliseconds
-            df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean()
+            #df = df.resample(muestreo,on='Resample').mean(numeric_only=True)
+            df = df.reset_index().groupby(
+                pd.Grouper(
+                    freq=muestreo,
+                    key='Resample')).mean(
+                numeric_only=True)
             #df = df.resample('10L').interpolate();
             # df.isnull().sum()
             #df = df.dropna()
-            df.replace(np.nan, 0)
+            #df.replace(np.nan, 0)
             df['unixtime'] = df.index.to_series().apply(
                 lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
-
         else:
             # Rename Column
             df = df.rename(columns={"time": "unixtime"})
@@ -105,24 +110,30 @@ def load_imu_all(
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
             # 30L corresponds to 30 milliseconds
-            df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean()
+            df = df.reset_index().groupby(
+                pd.Grouper(
+                    freq=muestreo,
+                    key='Resample')).mean(
+                numeric_only=True)
             #df = df.resample('33L').interpolate();
             # df.isnull().sum()
             #df.replace(np.nan, 0)
             df['unixtime'] = df.index.to_series().apply(
                 lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
-        if ts[0] > maxminunixtime:
-            maxminunixtime = ts[0]
-        if (minmaxunixtime == 0):
-            minmaxunixtime = ts[len(ts) - 1]
-        if ts[len(ts) - 1] < minmaxunixtime:
-            minmaxunixtime = ts[len(ts) - 1]
+        if len(ts) != 0:
+            if ts[0] > maxminunixtime:
+                maxminunixtime = ts[0]
+            if (minmaxunixtime == 0):
+                minmaxunixtime = ts[len(ts) - 1]
+            if ts[len(ts) - 1] < minmaxunixtime:
+                minmaxunixtime = ts[len(ts) - 1]
 
-        x = df[channels[contPaths]].values.T
-        ts_list.append(ts)
-        x_ret.append(x)
-        contPaths = contPaths + 1
+            x = df[channels[contPaths]].values.T
+            ts_list.append(ts)
+            x_ret.append(x)
+            contPaths = contPaths + 1
+    min_len = min([len(ts) for ts in ts_list])
     ts_ret = None
 
     fT = False
@@ -160,7 +171,7 @@ def load_imu_all(
     x_ret = newx_ret
     ts_list = newts_list
 
-    for i in range(len(paths)):
+    for i in range(contPaths):
         #x_ret[i] = x_ret[i][:, :min_len]
         #ts_list[i] = ts_list[i][:min_len]
 
@@ -214,6 +225,9 @@ def remuestrear(
             xs = xs[:, :i - 1]
             restInt = restInt + (i - 1)
             break
+
+    print(xs.shape)
+    print(unixtimes.shape)
     return xs, unixtimes, restInt
 
 
