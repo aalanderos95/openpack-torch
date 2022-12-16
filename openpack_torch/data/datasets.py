@@ -135,15 +135,8 @@ class OpenPackImu(torch.utils.data.Dataset):
                       for seg_idx, pos in enumerate(range(0, seq_len, window))]
         self.data = data
         self.index = tuple(index)
-        print(
-            "IMPRESION",
-            "SESSION:",
-            session,
-            ", USER:",
-            user,
-            len(data),
-            len(x_sess),
-            len(label))
+        print("IMPRESION","SESSION:",session,", USER:",user,len(data),len(x_sess),len(label))
+
 
     def preprocessing(self) -> None:
         """This method is called after ``load_dataset()`` and apply preprocessing to loaded data.
@@ -329,10 +322,12 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                             channels[cont] += ["acc_x", "acc_y", "acc_z"]
                     cont = cont + 1
 
-            ts_sess, x_sess = load_imu_all(
+            
+            ts_sess, x_sess  =  load_imu_all(
                 paths_imu,
                 channels)
 
+            
             if submission:
                 # For set dummy data.
                 label = np.zeros((len(ts_sess),), dtype=np.int64)
@@ -344,18 +339,18 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                 df_label = optk.data.load_and_resample_operation_labels(
                     path, ts_sess, classes=self.classes)
                 label = df_label["act_idx"].values
-
-                data.append({
-                    "user": user,
-                    "session": session,
-                    "data": x_sess,
-                    "label": label,
-                    "unixtime": ts_sess,
-                })
+        
+            data.append({
+                "user": user,
+                "session": session,
+                "data": x_sess,
+                "label": label,
+                "unixtime": ts_sess,
+            })
 
             seq_len = ts_sess.shape[0]
             index += [dict(seq=seq_idx, seg=seg_idx, pos=pos)
-                      for seg_idx, pos in enumerate(range(0, seq_len, window))]
+                        for seg_idx, pos in enumerate(range(0, seq_len, window))]
         self.data = data
         self.index = tuple(index)
 
