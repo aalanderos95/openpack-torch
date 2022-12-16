@@ -135,7 +135,6 @@ class OpenPackImu(torch.utils.data.Dataset):
                       for seg_idx, pos in enumerate(range(0, seq_len, window))]
         self.data = data
         self.index = tuple(index)
-        print("IMPRESION","SESSION:",session,", USER:",user,len(data),len(x_sess),len(label))
 
 
     def preprocessing(self) -> None:
@@ -225,6 +224,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
     """
     data: List[Dict] = None
     index: Tuple[Dict] = None
+    muestreo: int = None
 
     def __init__(
             self,
@@ -254,6 +254,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         self.window = window
         self.submission = submission
         self.debug = debug
+        self.muestreo = cfg.muestreo
 
         self.load_dataset(
             cfg,
@@ -285,6 +286,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
 
             paths_imu = []
             channels = []
+            hz = []
             cont = 0
             for stream in cfg.dataset.stream:
                 for device in stream.devices:
@@ -296,6 +298,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                         stream.path.fname
                     )
                     paths_imu.append(path)
+                    hz.append(stream.frame_rate)
                     if "atr" in str(path):
                         if stream.acc in (None, True):
                             if channels == [] or len(channels) < (cont + 1):
@@ -320,12 +323,24 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                             channels.append(["acc_x", "acc_y", "acc_z"])
                         else:
                             channels[cont] += ["acc_x", "acc_y", "acc_z"]
+                    elif "eda" in str(path):
+                        if channels == [] or len(channels) < (cont + 1):
+                            channels.append(["eda"])
+                        else:
+                            channels[cont] += ["eda"]
+                    elif "temp" in str(path):
+                        if channels == [] or len(channels) < (cont + 1):
+                            channels.append(["temp"])
+                        else:
+                            channels[cont] += ["temp"]
                     cont = cont + 1
 
             
             ts_sess, x_sess  =  load_imu_all(
                 paths_imu,
-                channels)
+                channels,
+                self.muestreo,
+                hz)
 
             
             if submission:

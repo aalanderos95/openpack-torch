@@ -40,7 +40,6 @@ class OpenPackBaseDataModule(pl.LightningDataModule):
             self.batch_size = cfg.train.debug.batch_size
         else:
             self.batch_size = cfg.train.batch_size
-
     def get_kwargs_for_datasets(self, stage: Optional[str] = None) -> Dict:
         """Build a kwargs to initialize dataset class. This method is called in ``setup()``.
 

@@ -1,11 +1,10 @@
 """``dataloader`` provide utility function to load files saved in OpenPack dataset format.
 """
-import datetime as dt
 import json
 from logging import getLogger
 from pathlib import Path
 from typing import List, Tuple, Union
-
+import datetime as dt
 import numpy as np
 import pandas as pd
 
@@ -46,6 +45,8 @@ def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
 def load_imu_all(
     paths: Union[Tuple[Path, ...], List[Path]],
     channels = [],
+    muestreoN = int,
+    hz = [],
     th: int = 30,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load IMU data from CSVs.
@@ -72,9 +73,7 @@ def load_imu_all(
     contPaths = 0
     maxminunixtime = 0
     minmaxunixtime = 0
-    muestreoN = 50
-    muestreo = '50L'
-    NoUtilizar = False;
+    muestreo = str(int(1000/muestreoN))+'L'
     for path in paths:
         df = pd.read_csv(path)
         logger.debug(f"load IMU data from {path} -> df={df.shape}")
@@ -89,14 +88,11 @@ def load_imu_all(
             #RESAMPLE
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
-            
-            #30L corresponds to 30 milliseconds
-            #df = df.resample(muestreo,on='Resample').mean(numeric_only=True)
-            df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
-            #df = df.resample('10L').interpolate();
-            #df.isnull().sum()
-            #df = df.dropna()
-            #df.replace(np.nan, 0)
+            if((1000/muestreoN) < hz[contPaths]):
+                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
+            else:
+                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
+            df = df.fillna(0)  
             df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
         else:
@@ -112,15 +108,18 @@ def load_imu_all(
                 ts_df = pd.DataFrame()
                 ts_df['unixtime'] = pd.Series(arrayUnixTimes)
                 df = pd.concat([df,ts_df],ignore_index = True)
-                df = df.fillna(0)        
             #RESAMPLE
+            
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
-            #30L corresponds to 30 milliseconds
-            df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
-            #df = df.resample('33L').interpolate();
-            #df.isnull().sum()
-            #df.replace(np.nan, 0)
+            if((1000/muestreoN) < hz[contPaths]):
+                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True)
+            else:
+                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
+                #df = df.interpolate(method='linear', limit_direction='forward', axis=0)
+
+            df.replace(np.nan, 0)
+            df = df.fillna(0)  
             df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
         
@@ -130,7 +129,7 @@ def load_imu_all(
             minmaxunixtime = ts[len(ts)-1];
         if ts[len(ts) - 1] < minmaxunixtime:
             minmaxunixtime = ts[len(ts) - 1]
-
+ 
         x = df[channels[contPaths]].values.T
         ts_list.append(ts)
         x_ret.append(x)
