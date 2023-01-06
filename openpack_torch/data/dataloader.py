@@ -7,6 +7,7 @@ from typing import List, Tuple, Union
 import datetime as dt
 import numpy as np
 import pandas as pd
+import os
 
 logger = getLogger(__name__)
 
@@ -74,42 +75,89 @@ def load_imu_all(
     maxminunixtime = 0
     minmaxunixtime = 0
     muestreo = str(int(1000/muestreoN))+'L'
+   
     for path in paths:
-        df = pd.read_csv(path)
-        logger.debug(f"load IMU data from {path} -> df={df.shape}")
-        
-        # NOTE: Error handling : ATR01 in U0101-S0500 has timestamp error.
-        #       See an issue #87.
-        if str(path).endswith("/U0101/atr/atr01/S0500.csv"):
-            df = df.drop(0, axis=0)
-            df = df.reset_index(drop=True)
-
-        if "atr" in str(path):
-            #RESAMPLE
-            df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
-            df = df.set_index('Resample')
-            if((1000/muestreoN) < hz[contPaths]):
-                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
-            else:
-                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
-            df = df.fillna(0)  
-            df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
-            ts = df["unixtime"].values
-        else:
-            # Rename Column
-            df = df.rename(columns={"time": "unixtime"})
-            if(len(df) == 0):
-                #IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS WILL BE GENERATED WITH THE COLUMN WITH THE CURRENT UNIX
-                min = str(maxminunixtime);
-                max = str(minmaxunixtime);
-                min = np.int64(min[0:len(min)-3] + '000')
-                max = np.int64(max[0:len(max)-3] + '000')
-                arrayUnixTimes = np.arange(min,max,muestreoN);
-                ts_df = pd.DataFrame()
-                ts_df['unixtime'] = pd.Series(arrayUnixTimes)
-                df = pd.concat([df,ts_df],ignore_index = True)
-            #RESAMPLE
+        if(os.path.exists(path)):
+            df = pd.read_csv(path)
+            logger.debug(f"load IMU data from {path} -> df={df.shape}")
             
+            # NOTE: Error handling : ATR01 in U0101-S0500 has timestamp error.
+            #       See an issue #87.
+            if str(path).endswith("/U0101/atr/atr01/S0500.csv"):
+                df = df.drop(0, axis=0)
+                df = df.reset_index(drop=True)
+
+            if "atr" in str(path):
+                if hz[contPaths] != (1000/muestreoN):
+                    #RESAMPLE
+                    df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+                    df = df.set_index('Resample')
+                    if((1000/muestreoN) < hz[contPaths]):
+                        df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
+                    else:
+                        df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
+                    df = df.fillna(0)  
+                    df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+                ts = df["unixtime"].values
+            else:
+                # Rename Column
+                df = df.rename(columns={"time": "unixtime"})
+                if hz[contPaths] != (1000/muestreoN):
+                    if(len(df) == 0):
+                        #IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS WILL BE GENERATED WITH THE COLUMN WITH THE CURRENT UNIX
+                        min = str(maxminunixtime);
+                        max = str(minmaxunixtime);
+                        min = np.int64(min[0:len(min)-3] + '000')
+                        max = np.int64(max[0:len(max)-3] + '000')
+                        arrayUnixTimes = np.arange(min,max,muestreoN);
+                        ts_df = pd.DataFrame()
+                        ts_df['unixtime'] = pd.Series(arrayUnixTimes)
+                        df = pd.concat([df,ts_df],ignore_index = True)
+                    #RESAMPLE
+                    
+                    df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+                    df = df.set_index('Resample')
+                    if((1000/muestreoN) < hz[contPaths]):
+                        df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True)
+                    else:
+                        df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
+                        #df = df.interpolate(method='linear', limit_direction='forward', axis=0)
+
+                    df.replace(np.nan, 0)
+                    df = df.fillna(0)  
+                    df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+                ts = df["unixtime"].values
+            
+            if ts[0] > maxminunixtime:
+                maxminunixtime = ts[0]
+            if(minmaxunixtime == 0):
+                minmaxunixtime = ts[len(ts)-1];
+            if ts[len(ts) - 1] < minmaxunixtime:
+                minmaxunixtime = ts[len(ts) - 1]
+    
+            x = df[channels[contPaths]].values.T
+            ts_list.append(ts)
+            x_ret.append(x)
+            contPaths = contPaths + 1
+        else:
+            print(path)
+            df = pd.DataFrame(columns=channels[contPaths]);
+            #COLUMNS
+            print(path)
+            logger.debug(f"load IMU data from {path} -> df={df.shape}")
+           
+            #IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS WILL BE GENERATED WITH THE COLUMN WITH THE CURRENT UNIX
+            min = str(maxminunixtime);
+            max = str(minmaxunixtime);
+            min = np.int64(min[0:len(min)-3] + '000')
+            max = np.int64(max[0:len(max)-3] + '000')
+            arrayUnixTimes = np.arange(min,max,muestreoN);
+            ts_df = pd.DataFrame()
+            ts_df['unixtime'] = pd.Series(arrayUnixTimes)
+            df = pd.concat([df,ts_df],ignore_index = True)
+            df.replace(np.nan, 0)
+            df = df.fillna(0)  
+            #RESAMPLE
             df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
             df = df.set_index('Resample')
             if((1000/muestreoN) < hz[contPaths]):
@@ -118,22 +166,21 @@ def load_imu_all(
                 df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
                 #df = df.interpolate(method='linear', limit_direction='forward', axis=0)
 
-            df.replace(np.nan, 0)
+            df = df.replace(np.nan, 0)
             df = df.fillna(0)  
             df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
-        
-        if ts[0] > maxminunixtime:
-            maxminunixtime = ts[0]
-        if(minmaxunixtime == 0):
-            minmaxunixtime = ts[len(ts)-1];
-        if ts[len(ts) - 1] < minmaxunixtime:
-            minmaxunixtime = ts[len(ts) - 1]
- 
-        x = df[channels[contPaths]].values.T
-        ts_list.append(ts)
-        x_ret.append(x)
-        contPaths = contPaths + 1
+            if ts[0] > maxminunixtime:
+                maxminunixtime = ts[0]
+            if(minmaxunixtime == 0):
+                minmaxunixtime = ts[len(ts)-1];
+            if ts[len(ts) - 1] < minmaxunixtime:
+                minmaxunixtime = ts[len(ts) - 1]
+    
+            x = df[channels[contPaths]].values.T
+            ts_list.append(ts)
+            x_ret.append(x)
+            contPaths = contPaths + 1
     ts_ret = None
     
     fT = False

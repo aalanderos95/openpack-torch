@@ -11,7 +11,7 @@ from omegaconf import DictConfig, open_dict
 from openpack_toolkit import OPENPACK_OPERATIONS
 
 from .dataloader import load_imu_all
-
+import os
 logger = getLogger(__name__)
 
 
@@ -278,94 +278,101 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
             window (int, optional): _description_. Defaults to None.
             submission (bool, optional): _description_. Defaults to False.
         """
+        #Validar si existe annotation antes de obtener datos
+       
         data, index = [], []
         for seq_idx, (user, session) in enumerate(user_session_list):
             with open_dict(cfg):
                 cfg.user = {"name": user}
                 cfg.session = session
 
-            paths_imu = []
-            channels = []
-            hz = []
-            cont = 0
-            for stream in cfg.dataset.stream:
-                for device in stream.devices:
-                    with open_dict(cfg):
-                        cfg.device = device
+            pathAnnotation = Path(
+                cfg.dataset.annotation.path.dir,
+                cfg.dataset.annotation.path.fname
+            )
+            if(os.path.exists(pathAnnotation)):
+                paths_imu = []
+                channels = []
+                hz = []
+                cont = 0
+                for stream in cfg.dataset.stream:
+                    for device in stream.devices:
+                        with open_dict(cfg):
+                            cfg.device = device
 
-                    path = Path(
-                        stream.path.dir,
-                        stream.path.fname
-                    )
-                    paths_imu.append(path)
-                    hz.append(stream.frame_rate)
-                    if "atr" in str(path):
-                        if stream.acc in (None, True):
+                        path = Path(
+                            stream.path.dir,
+                            stream.path.fname
+                        )
+                        paths_imu.append(path)
+                        hz.append(stream.frame_rate)
+                        if "atr" in str(path):
+                            if stream.acc in (None, True):
+                                if channels == [] or len(channels) < (cont + 1):
+                                    channels.append(["acc_x", "acc_y", "acc_z"])
+                                else:
+                                    channels[cont] += ["acc_x", "acc_y", "acc_z"]
+                            if stream.gyro in (None, True):
+                                if channels == [] or len(channels) < (cont + 1):
+                                    channels.append(["gyro_x", "gyro_y", "gyro_z"])
+                                else:
+                                    channels[cont] += ["gyro_x",
+                                                    "gyro_y", "gyro_z"]
+                            if stream.quat in (None, True):
+                                if channels == [] or len(channels) < (cont + 1):
+                                    channels.append(
+                                        ["quat_w", "quat_x", "quat_y", "quat_z"])
+                                else:
+                                    channels[cont] += ["quat_w",
+                                                    "quat_x", "quat_y", "quat_z"]
+                        elif "acc" in str(path):
                             if channels == [] or len(channels) < (cont + 1):
                                 channels.append(["acc_x", "acc_y", "acc_z"])
                             else:
                                 channels[cont] += ["acc_x", "acc_y", "acc_z"]
-                        if stream.gyro in (None, True):
+                        elif "eda" in str(path):
                             if channels == [] or len(channels) < (cont + 1):
-                                channels.append(["gyro_x", "gyro_y", "gyro_z"])
+                                channels.append(["eda"])
                             else:
-                                channels[cont] += ["gyro_x",
-                                                   "gyro_y", "gyro_z"]
-                        if stream.quat in (None, True):
+                                channels[cont] += ["eda"]
+                        elif "temp" in str(path):
                             if channels == [] or len(channels) < (cont + 1):
-                                channels.append(
-                                    ["quat_w", "quat_x", "quat_y", "quat_z"])
+                                channels.append(["temp"])
                             else:
-                                channels[cont] += ["quat_w",
-                                                   "quat_x", "quat_y", "quat_z"]
-                    elif "acc" in str(path):
-                        if channels == [] or len(channels) < (cont + 1):
-                            channels.append(["acc_x", "acc_y", "acc_z"])
-                        else:
-                            channels[cont] += ["acc_x", "acc_y", "acc_z"]
-                    elif "eda" in str(path):
-                        if channels == [] or len(channels) < (cont + 1):
-                            channels.append(["eda"])
-                        else:
-                            channels[cont] += ["eda"]
-                    elif "temp" in str(path):
-                        if channels == [] or len(channels) < (cont + 1):
-                            channels.append(["temp"])
-                        else:
-                            channels[cont] += ["temp"]
-                    cont = cont + 1
+                                channels[cont] += ["temp"]
+                        cont = cont + 1
 
+                
+                ts_sess, x_sess  =  load_imu_all(
+                    paths_imu,
+                    channels,
+                    self.muestreo,
+                    hz)
+
+                
+                if submission:
+                    # For set dummy data.
+                    label = np.zeros((len(ts_sess),), dtype=np.int64)
+                else:
+                    path = Path(
+                        cfg.dataset.annotation.path.dir,
+                        cfg.dataset.annotation.path.fname
+                    )
+                    df_label = optk.data.load_and_resample_operation_labels(
+                        path, ts_sess, classes=self.classes)
+                    label = df_label["act_idx"].values
             
-            ts_sess, x_sess  =  load_imu_all(
-                paths_imu,
-                channels,
-                self.muestreo,
-                hz)
+                data.append({
+                    "user": user,
+                    "session": session,
+                    "data": x_sess,
+                    "label": label,
+                    "unixtime": ts_sess,
+                })
 
-            
-            if submission:
-                # For set dummy data.
-                label = np.zeros((len(ts_sess),), dtype=np.int64)
-            else:
-                path = Path(
-                    cfg.dataset.annotation.path.dir,
-                    cfg.dataset.annotation.path.fname
-                )
-                df_label = optk.data.load_and_resample_operation_labels(
-                    path, ts_sess, classes=self.classes)
-                label = df_label["act_idx"].values
-        
-            data.append({
-                "user": user,
-                "session": session,
-                "data": x_sess,
-                "label": label,
-                "unixtime": ts_sess,
-            })
-
-            seq_len = ts_sess.shape[0]
-            index += [dict(seq=seq_idx, seg=seg_idx, pos=pos)
-                        for seg_idx, pos in enumerate(range(0, seq_len, window))]
+                seq_len = ts_sess.shape[0]
+                index += [dict(seq=seq_idx, seg=seg_idx, pos=pos)
+                            for seg_idx, pos in enumerate(range(0, seq_len, window))]
         self.data = data
         self.index = tuple(index)
 
