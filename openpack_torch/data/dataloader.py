@@ -140,10 +140,8 @@ def load_imu_all(
             x_ret.append(x)
             contPaths = contPaths + 1
         else:
-            print(path)
             df = pd.DataFrame(columns=channels[contPaths]);
             #COLUMNS
-            print(path)
             logger.debug(f"load IMU data from {path} -> df={df.shape}")
            
             #IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS WILL BE GENERATED WITH THE COLUMN WITH THE CURRENT UNIX
@@ -270,8 +268,6 @@ def remuestrear (
       restInt = restInt + (i-1);
       break;   
 
-  print(xs.shape)
-  print(unixtimes.shape)
   return xs, unixtimes, restInt
 def resample (
     unixtimesFinal: np.ndarray,
