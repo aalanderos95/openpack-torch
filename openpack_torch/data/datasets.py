@@ -290,7 +290,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                 cfg.dataset.annotation.path.dir,
                 cfg.dataset.annotation.path.fname
             )
-            if(os.path.exists(pathAnnotation)):
+            if(os.path.exists(pathAnnotation) or submission):
                 paths_imu = []
                 channels = []
                 hz = []
@@ -335,6 +335,11 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                                 channels.append(["eda"])
                             else:
                                 channels[cont] += ["eda"]
+                        elif "bvp" in str(path):
+                            if channels == [] or len(channels) < (cont + 1):
+                                channels.append(["bvp"])
+                            else:
+                                channels[cont] += ["bvp"]
                         elif "temp" in str(path):
                             if channels == [] or len(channels) < (cont + 1):
                                 channels.append(["temp"])

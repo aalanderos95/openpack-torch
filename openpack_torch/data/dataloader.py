@@ -114,7 +114,8 @@ def load_imu_all(
                         ts_df['unixtime'] = pd.Series(arrayUnixTimes)
                         df = pd.concat([df,ts_df],ignore_index = True)
                     #RESAMPLE
-                    
+                    df.replace(np.nan, 0)
+                    df = df.fillna(0)  
                     df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
                     df = df.set_index('Resample')
                     if((1000/muestreoN) < hz[contPaths]):
@@ -134,7 +135,6 @@ def load_imu_all(
                 minmaxunixtime = ts[len(ts)-1];
             if ts[len(ts) - 1] < minmaxunixtime:
                 minmaxunixtime = ts[len(ts) - 1]
-    
             x = df[channels[contPaths]].values.T
             ts_list.append(ts)
             x_ret.append(x)
