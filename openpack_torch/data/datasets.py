@@ -10,7 +10,7 @@ import torch
 from omegaconf import DictConfig, open_dict
 from openpack_toolkit import OPENPACK_OPERATIONS
 
-from .dataloader import load_imu_all
+from .dataloader import (load_imu_all,load_imu_new,load_imu)
 import os
 logger = getLogger(__name__)
 
@@ -201,7 +201,6 @@ class OpenPackImu(torch.utils.data.Dataset):
         ts = torch.from_numpy(ts)
         return {"x": x, "t": t, "ts": ts}
 
-
 class OpenPackImuMulti(torch.utils.data.Dataset):
     """Dataset class for IMU data.
 
@@ -281,6 +280,8 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         #Validar si existe annotation antes de obtener datos
        
         data, index = [], []
+        import time
+        inicio = time.time()
         for seq_idx, (user, session) in enumerate(user_session_list):
             with open_dict(cfg):
                 cfg.user = {"name": user}
@@ -295,6 +296,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                 channels = []
                 hz = []
                 cont = 0
+                pathsWOSession = []
                 for stream in cfg.dataset.stream:
                     for device in stream.devices:
                         with open_dict(cfg):
@@ -304,6 +306,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                             stream.path.dir,
                             stream.path.fname
                         )
+                        pathsWOSession.append(stream.path.dir)
                         paths_imu.append(path)
                         hz.append(stream.frame_rate)
                         if "atr" in str(path):
@@ -348,12 +351,12 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                         cont = cont + 1
 
                 
-                ts_sess, x_sess  =  load_imu_all(
+                ts_sess, x_sess  =  load_imu_new(
                     paths_imu,
+                    pathsWOSession,
                     channels,
                     self.muestreo,
                     hz)
-
                 
                 if submission:
                     # For set dummy data.
@@ -378,6 +381,9 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                 seq_len = ts_sess.shape[0]
                 index += [dict(seq=seq_idx, seg=seg_idx, pos=pos)
                             for seg_idx, pos in enumerate(range(0, seq_len, window))]
+        
+        fin = time.time()
+        logger.info(f"Tiempo de Ejecución: {(fin-inicio)}!") 
         self.data = data
         self.index = tuple(index)
 
@@ -446,7 +452,6 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         return {"x": x, "t": t, "ts": ts}
 
 # -----------------------------------------------------------------------------
-
 
 class OpenPackKeypoint(torch.utils.data.Dataset):
     """Dataset Class for Keypoint Data.
