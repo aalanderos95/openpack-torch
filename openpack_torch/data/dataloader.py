@@ -90,7 +90,8 @@ def load_imu_all(
             if "atr" in str(path):
                 if hz[contPaths] != (1000/muestreoN):
                     #RESAMPLE
-                    df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+                    df["Resample"] = df['unixtime'].astype('datetime64[ms]')
+
                     df = df.set_index('Resample')
                     if((1000/muestreoN) < hz[contPaths]):
                         df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
@@ -116,7 +117,7 @@ def load_imu_all(
                     #RESAMPLE
                     df.replace(np.nan, 0)
                     df = df.fillna(method="bfill")  
-                    df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+                    df["Resample"] = df['unixtime'].astype('datetime64[ms]')
                     df = df.set_index('Resample')
                     if((1000/muestreoN) < hz[contPaths]):
                         df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True)
@@ -156,7 +157,7 @@ def load_imu_all(
             df.replace(np.nan, 0)
             df = df.fillna(0)  
             #RESAMPLE
-            df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+            df["Resample"] = df['unixtime'].astype('datetime64[ms]')
             df = df.set_index('Resample')
             if((1000/muestreoN) < hz[contPaths]):
                 df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True)
@@ -302,11 +303,11 @@ def load_imu_new(
             x_ret.append(x)
             contPaths = contPaths + 1
         else:
-
             df = pd.DataFrame(columns=channels[contPaths]);
-            ts_df = pd.DataFrame("unixtime")
+            ts_df = pd.DataFrame(columns=["unixtime"])
             df = pd.concat([df,ts_df],ignore_index = True)
             x = df[channels[contPaths]].values.T
+            ts = df["unixtime"].values
             ts_list.append(ts)
             x_ret.append(x)
             contPaths = contPaths + 1
@@ -315,6 +316,7 @@ def load_imu_new(
     minmaxunixtime = 0
     muestreo = str(int(1000/muestreoN))+'L'
     for i in range(len(paths)):
+
         if i != 0:
             df = pd.DataFrame();
             df['unixtime'] = pd.Series(ts_list[i])
@@ -351,7 +353,7 @@ def load_imu_new(
                 ts_df = pd.DataFrame();
                 ts_df['unixtime'] = pd.Series(ts_list[0])
             
-                df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+                df["Resample"] = df['unixtime'].astype('datetime64[ms]')
                 df = df.set_index('Resample')
                 
                 df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
@@ -376,7 +378,7 @@ def load_imu_new(
                 df[channels[i][channel]] = pd.Series(x_ret[i][channel,:])
 
             
-            df['Resample'] = pd.to_datetime(df.unixtime, unit='ms')
+            df["Resample"] = df['unixtime'].astype('datetime64[ms]')
             df = df.set_index('Resample')            
             df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
             
@@ -452,7 +454,11 @@ def concatDf(
     unixInicial = str(df_n["unixtime"].iloc[0])
     unixFinal = str(df_n["unixtime"].iloc[len(df_n)-1])
     df_vacio = df_vacio.query(f"`unixtime` >= {unixInicial} and `unixtime` <={unixFinal}")
-    df_vacio['Resample'] = pd.to_datetime(df_vacio.unixtime, unit='ms')
+    df_vacio["Resample"] = df_vacio['unixtime'].astype('datetime64[ms]')
+    #print(df_vacioPrueba)
+    #df_vacio['Resample'] = pd.to_datetime(df_vacio.unixtime, unit='ms')
+    #print(df_vacio)
+    #exit();
     df_vacio = df_vacio.set_index('Resample')
     
     df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
