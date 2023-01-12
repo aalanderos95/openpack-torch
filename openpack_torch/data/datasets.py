@@ -256,7 +256,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         self.submission = submission
         self.debug = debug
         self.muestreo = cfg.muestreo
-
+        self.normalizacion = cfg.normalizacion
         self.load_dataset(
             cfg,
             user_session_list,
@@ -423,12 +423,12 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         }
 
     def preprocessing(self) -> None:
-        
-        for seq_dict in self.data:
-            x = seq_dict.get("data")
-            x = np.clip(x, -3, +3)
-            x = (x + 3.) / 6.
-            seq_dict["data"] = x
+        if (self.normalizacion):
+            for seq_dict in self.data:
+                x = seq_dict.get("data")
+                x = np.clip(x, -3, +3)
+                x = (x + 3.) / 6.
+                seq_dict["data"] = x
 
     
     @property
