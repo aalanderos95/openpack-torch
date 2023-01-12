@@ -398,6 +398,8 @@ def load_imu_new(
                     df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
 
                     channels[i] += series;
+                    df = df.fillna(0)
+
                 ts = df["unixtime"].values
                 x = df[channels[i]].values.T
                 ts_list[i] = ts
@@ -444,6 +446,9 @@ def load_imu_new(
                     df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
 
                     channels[i] += series;
+                    df = df.fillna(0)
+
+                print(df);
                 ts = df["unixtime"].values
                 x = df[channels[i]].values.T
                 ts_list[i] = ts
@@ -484,13 +489,14 @@ def load_imu_new(
                 df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
 
                 channels[i] += series;
+                df = df.fillna(0)
+
 
             x = df[channels[i]].values.T
             ts_list[i] = ts
             x_ret[i] = x
 
     min_len = np.min([len(ts) for ts in ts_list])
-
     ts_ret = None
     for i in range(len(paths)):
         #x_ret[i] = x_ret[i][:, :min_len]
