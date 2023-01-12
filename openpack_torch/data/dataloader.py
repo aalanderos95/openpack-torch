@@ -1,15 +1,17 @@
 """``dataloader`` provide utility function to load files saved in OpenPack dataset format.
 """
+import datetime as dt
 import json
+import os
 from logging import getLogger
 from pathlib import Path
 from typing import List, Tuple, Union
-import datetime as dt
+
 import numpy as np
 import pandas as pd
-import os
 
 logger = getLogger(__name__)
+
 
 def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
     """Load keypoints from JSON.
@@ -45,9 +47,9 @@ def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
 
 def load_imu_all(
     paths: Union[Tuple[Path, ...], List[Path]],
-    channels = [],
-    muestreoN = int,
-    hz = [],
+    channels=[],
+    muestreoN=int,
+    hz=[],
     th: int = 30,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load IMU data from CSVs.
@@ -74,13 +76,13 @@ def load_imu_all(
     contPaths = 0
     maxminunixtime = 0
     minmaxunixtime = 0
-    muestreo = str(int(1000/muestreoN))+'L'
-   
+    muestreo = str(int(1000 / muestreoN)) + 'L'
+
     for path in paths:
-        if(os.path.exists(path)):
+        if (os.path.exists(path)):
             df = pd.read_csv(path)
             logger.debug(f"load IMU data from {path} -> df={df.shape}")
-            
+
             # NOTE: Error handling : ATR01 in U0101-S0500 has timestamp error.
             #       See an issue #87.
             if str(path).endswith("/U0101/atr/atr01/S0500.csv"):
@@ -88,52 +90,76 @@ def load_imu_all(
                 df = df.reset_index(drop=True)
 
             if "atr" in str(path):
-                if hz[contPaths] != (1000/muestreoN):
-                    #RESAMPLE
+                if hz[contPaths] != (1000 / muestreoN):
+                    # RESAMPLE
                     df["Resample"] = df['unixtime'].astype('datetime64[ms]')
 
                     df = df.set_index('Resample')
-                    if((1000/muestreoN) < hz[contPaths]):
-                        df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True);
+                    if ((1000 / muestreoN) < hz[contPaths]):
+                        df = df.reset_index().groupby(
+                            pd.Grouper(
+                                freq=muestreo,
+                                key='Resample')).mean(
+                            numeric_only=True)
                     else:
-                        df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
-                    df = df.fillna(method="bfill")   
-                    df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+                        df = df.reset_index().groupby(
+                            pd.Grouper(
+                                freq=muestreo,
+                                key='Resample')).mean().interpolate(
+                            method='linear',
+                            limit_direction='forward',
+                            axis=0)
+                    df = df.fillna(method="bfill")
+                    df['unixtime'] = df.index.to_series().apply(
+                        lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
                 ts = df["unixtime"].values
             else:
                 # Rename Column
                 df = df.rename(columns={"time": "unixtime"})
-                if hz[contPaths] != (1000/muestreoN):
-                    if(len(df) == 0):
-                        #IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS WILL BE GENERATED WITH THE COLUMN WITH THE CURRENT UNIX
-                        min = str(maxminunixtime);
-                        max = str(minmaxunixtime);
-                        min = np.int64(min[0:len(min)-3] + '000')
-                        max = np.int64(max[0:len(max)-3] + '000')
-                        arrayUnixTimes = np.arange(min,max,muestreoN);
+                if hz[contPaths] != (1000 / muestreoN):
+                    if (len(df) == 0):
+                        # IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS
+                        # WILL BE GENERATED WITH THE COLUMN WITH THE CURRENT
+                        # UNIX
+                        min = str(maxminunixtime)
+                        max = str(minmaxunixtime)
+                        min = np.int64(min[0:len(min) - 3] + '000')
+                        max = np.int64(max[0:len(max) - 3] + '000')
+                        arrayUnixTimes = np.arange(min, max, muestreoN)
                         ts_df = pd.DataFrame()
                         ts_df['unixtime'] = pd.Series(arrayUnixTimes)
-                        df = pd.concat([df,ts_df],ignore_index = True)
-                    #RESAMPLE
+                        df = pd.concat([df, ts_df], ignore_index=True)
+                    # RESAMPLE
                     df.replace(np.nan, 0)
-                    df = df.fillna(method="bfill")  
+                    df = df.fillna(method="bfill")
                     df["Resample"] = df['unixtime'].astype('datetime64[ms]')
                     df = df.set_index('Resample')
-                    if((1000/muestreoN) < hz[contPaths]):
-                        df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True)
+                    if ((1000 / muestreoN) < hz[contPaths]):
+                        df = df.reset_index().groupby(
+                            pd.Grouper(
+                                freq=muestreo,
+                                key='Resample')).mean(
+                            numeric_only=True)
                     else:
-                        df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
+                        df = df.reset_index().groupby(
+                            pd.Grouper(
+                                freq=muestreo,
+                                key='Resample')).mean().interpolate(
+                            method='linear',
+                            limit_direction='forward',
+                            axis=0)
                         #df = df.interpolate(method='linear', limit_direction='forward', axis=0)
 
                     df.replace(np.nan, 0)
-                    df = df.fillna(0)  
-                    df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+                    df = df.fillna(0)
+                    df['unixtime'] = df.index.to_series().apply(
+                        lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
                 ts = df["unixtime"].values
-            
+
             if ts[0] > maxminunixtime:
                 maxminunixtime = ts[0]
-            if(minmaxunixtime == 0):
-                minmaxunixtime = ts[len(ts)-1];
+            if (minmaxunixtime == 0):
+                minmaxunixtime = ts[len(ts) - 1]
             if ts[len(ts) - 1] < minmaxunixtime:
                 minmaxunixtime = ts[len(ts) - 1]
             x = df[channels[contPaths]].values.T
@@ -141,80 +167,94 @@ def load_imu_all(
             x_ret.append(x)
             contPaths = contPaths + 1
         else:
-            df = pd.DataFrame(columns=channels[contPaths]);
-            #COLUMNS
+            df = pd.DataFrame(columns=channels[contPaths])
+            # COLUMNS
             logger.debug(f"load IMU data from {path} -> df={df.shape}")
-           
-            #IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS WILL BE GENERATED WITH THE COLUMN WITH THE CURRENT UNIX
-            min = str(maxminunixtime);
-            max = str(minmaxunixtime);
-            min = np.int64(min[0:len(min)-3] + '000')
-            max = np.int64(max[0:len(max)-3] + '000')
-            arrayUnixTimes = np.arange(min,max,muestreoN);
+
+            # IF IT DOES NOT HAVE DATA, A NEW DATA FRAME OF ZEROS WILL BE
+            # GENERATED WITH THE COLUMN WITH THE CURRENT UNIX
+            min = str(maxminunixtime)
+            max = str(minmaxunixtime)
+            min = np.int64(min[0:len(min) - 3] + '000')
+            max = np.int64(max[0:len(max) - 3] + '000')
+            arrayUnixTimes = np.arange(min, max, muestreoN)
             ts_df = pd.DataFrame()
             ts_df['unixtime'] = pd.Series(arrayUnixTimes)
-            df = pd.concat([df,ts_df],ignore_index = True)
+            df = pd.concat([df, ts_df], ignore_index=True)
             df.replace(np.nan, 0)
-            df = df.fillna(0)  
-            #RESAMPLE
+            df = df.fillna(0)
+            # RESAMPLE
             df["Resample"] = df['unixtime'].astype('datetime64[ms]')
             df = df.set_index('Resample')
-            if((1000/muestreoN) < hz[contPaths]):
-                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean(numeric_only=True)
+            if ((1000 / muestreoN) < hz[contPaths]):
+                df = df.reset_index().groupby(
+                    pd.Grouper(
+                        freq=muestreo,
+                        key='Resample')).mean(
+                    numeric_only=True)
             else:
-                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
+                df = df.reset_index().groupby(
+                    pd.Grouper(
+                        freq=muestreo,
+                        key='Resample')).mean().interpolate(
+                    method='linear',
+                    limit_direction='forward',
+                    axis=0)
                 #df = df.interpolate(method='linear', limit_direction='forward', axis=0)
 
             df = df.replace(np.nan, 0)
-            df = df.fillna(0)  
-            df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+            df = df.fillna(0)
+            df['unixtime'] = df.index.to_series().apply(
+                lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
             ts = df["unixtime"].values
             if ts[0] > maxminunixtime:
                 maxminunixtime = ts[0]
-            if(minmaxunixtime == 0):
-                minmaxunixtime = ts[len(ts)-1];
+            if (minmaxunixtime == 0):
+                minmaxunixtime = ts[len(ts) - 1]
             if ts[len(ts) - 1] < minmaxunixtime:
                 minmaxunixtime = ts[len(ts) - 1]
-    
+
             x = df[channels[contPaths]].values.T
             ts_list.append(ts)
             x_ret.append(x)
             contPaths = contPaths + 1
     ts_ret = None
-    
+
     fT = False
-    newts_list = [];
-    newx_ret = [];
-    ts_list_reshape = [];
+    newts_list = []
+    newx_ret = []
+    ts_list_reshape = []
     for i in range(len(x_ret)):
         x_ret_reshape = []
-        for j in range(len(x_ret[i])):   
+        for j in range(len(x_ret[i])):
             X_train = pd.DataFrame()
-            X_trainMean = pd.DataFrame();  
+            X_trainMean = pd.DataFrame()
             ts_train = pd.DataFrame()
-            ts_trainMean = pd.DataFrame();    
-            data = {'unixtime':ts_list[i], 'value':x_ret[i][j,:]};
+            ts_trainMean = pd.DataFrame()
+            data = {'unixtime': ts_list[i], 'value': x_ret[i][j, :]}
             df = pd.DataFrame(data=data)
-            dfMean = df.query(f"`unixtime` >= {maxminunixtime} and `unixtime` <={minmaxunixtime}")
-            
+            dfMean = df.query(
+                f"`unixtime` >= {maxminunixtime} and `unixtime` <={minmaxunixtime}")
+
             x_list = list(x for x in dfMean['value'].to_numpy())
             tsN_list = list(x for x in dfMean['unixtime'].to_numpy())
 
             X_train['value'] = pd.Series(x_list)
-            ts_train['unixtime'] = pd.Series(tsN_list);
-            X_trainMean = pd.concat([X_trainMean,X_train],ignore_index = True)
-            ts_trainMean = pd.concat([ts_trainMean,ts_train],ignore_index = True)
+            ts_train['unixtime'] = pd.Series(tsN_list)
+            X_trainMean = pd.concat([X_trainMean, X_train], ignore_index=True)
+            ts_trainMean = pd.concat(
+                [ts_trainMean, ts_train], ignore_index=True)
 
-            if fT == False:
+            if not fT:
                 #x_ret_reshape = [len(x_ret),len(X_trainMean)]
                 ts_list_reshape = ts_trainMean.values.T
-                fT = True  
-            x_ret_reshape.append(X_trainMean.values.T[0]);
+                fT = True
+            x_ret_reshape.append(X_trainMean.values.T[0])
         newts_list.append(ts_list_reshape[0])
-        newx_ret.append(x_ret_reshape);
-    x_ret = newx_ret;
-    ts_list = newts_list;
-    
+        newx_ret.append(x_ret_reshape)
+    x_ret = newx_ret
+    ts_list = newts_list
+
     for i in range(contPaths):
         #x_ret[i] = x_ret[i][:, :min_len]
         #ts_list[i] = ts_list[i][:min_len]
@@ -247,13 +287,13 @@ def load_imu_all(
     return ts_ret, x_ret
 
 
-
 def load_imu_new(
     paths: Union[Tuple[Path, ...], List[Path]],
-    pathsWOSession = [],
-    channels = [],
-    muestreoN = int,
-    hz = [],
+    pathsWOSession=[],
+    channels=[],
+    muestreoN=int,
+    hz=[],
+    aplicaSeries: bool = False,
     th: int = 30,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load IMU data from CSVs.
@@ -278,12 +318,17 @@ def load_imu_new(
 
     ts_ret, x_ret, ts_list = None, [], []
     contPaths = 0
- 
-    
-    sessions = ['S0100.csv','S0200.csv','S0300.csv','S0400.csv','S0500.csv']
 
+    sessions = [
+        'S0100.csv',
+        'S0200.csv',
+        'S0300.csv',
+        'S0400.csv',
+        'S0500.csv']
+
+    series = ['mean', 'std', 'max','min','median']
     for path in paths:
-        if(os.path.exists(path)):
+        if (os.path.exists(path)):
             df = pd.read_csv(path)
             logger.debug(f"load IMU data from {path} -> df={df.shape}")
             assert set(channels[contPaths]) < set(df.columns)
@@ -293,19 +338,19 @@ def load_imu_new(
             if str(path).endswith("/U0101/atr/atr01/S0500.csv"):
                 df = df.drop(0, axis=0)
                 df = df.reset_index(drop=True)
-            
 
             df = df.rename(columns={"time": "unixtime"})
+        
             ts = df["unixtime"].values
             x = df[channels[contPaths]].values.T
-           
+
             ts_list.append(ts)
             x_ret.append(x)
             contPaths = contPaths + 1
         else:
-            df = pd.DataFrame(columns=channels[contPaths]);
+            df = pd.DataFrame(columns=channels[contPaths])
             ts_df = pd.DataFrame(columns=["unixtime"])
-            df = pd.concat([df,ts_df],ignore_index = True)
+            df = pd.concat([df, ts_df], ignore_index=True)
             x = df[channels[contPaths]].values.T
             ts = df["unixtime"].values
             ts_list.append(ts)
@@ -314,91 +359,138 @@ def load_imu_new(
 
     maxminunixtime = 0
     minmaxunixtime = 0
-    muestreo = str(int(1000/muestreoN))+'L'
+    muestreo = str(int(1000 / muestreoN)) + 'L'
     for i in range(len(paths)):
 
         if i != 0:
-            df = pd.DataFrame();
+            df = pd.DataFrame()
             df['unixtime'] = pd.Series(ts_list[i])
             for channel in range(len(channels[i])):
-                df[channels[i][channel]] = pd.Series(x_ret[i][channel,:])
+                df[channels[i][channel]] = pd.Series(x_ret[i][channel, :])
 
-            min = str(maxminunixtime);
-            max = str(minmaxunixtime);
-            min = np.int64(min[0:len(min)-3] + '000')
-            max = np.int64(max[0:len(max)-3] + '000')
-            if(len(df) == 0):
-                ts_df = pd.DataFrame();
+            min = str(maxminunixtime)
+            max = str(minmaxunixtime)
+            min = np.int64(min[0:len(min) - 3] + '000')
+            max = np.int64(max[0:len(max) - 3] + '000')
+            if (len(df) == 0):
+                ts_df = pd.DataFrame()
                 ts_df['unixtime'] = pd.Series(ts_list[0])
-                df = pd.concat([df,ts_df])
+                df = pd.concat([df, ts_df])
                 for session in sessions:
                     pathNew = Path(
-                            pathsWOSession[i],
-                            session
-                        )
-                    if(os.path.exists(pathNew)):
+                        pathsWOSession[i],
+                        session
+                    )
+                    if (os.path.exists(pathNew)):
                         dfNew = pd.read_csv(pathNew)
-                        if(len(dfNew) != 0):
+                        if (len(dfNew) != 0):
                             for channel in channels[i]:
-                                mean_value=dfNew[channel].mean()
-                                df[channel].fillna(value=mean_value, inplace=True)
-                            break;
-                
+                                mean_value = dfNew[channel].mean()
+                                df[channel].fillna(
+                                    value=mean_value, inplace=True)
+                            break
+                if(aplicaSeries):
+                    #TIMESERIES            
+                    df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
+                    df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
+                    df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
+                    df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
+                    df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
+
+                    channels[i] += series;
                 ts = df["unixtime"].values
                 x = df[channels[i]].values.T
-                ts_list[i] = ts;
-                x_ret[i] = x;
+                ts_list[i] = ts
+                x_ret[i] = x
             else:
                 df_vacio = df
-                ts_df = pd.DataFrame();
+                ts_df = pd.DataFrame()
                 ts_df['unixtime'] = pd.Series(ts_list[0])
-            
+
                 df["Resample"] = df['unixtime'].astype('datetime64[ms]')
                 df = df.set_index('Resample')
-                
-                df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
-                for channel in channels[i]:
-                    mean_value=df[channel].mean()
-                    df[channel].fillna(value=mean_value, inplace=True)      
 
-                df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+                df = df.reset_index().groupby(
+                    pd.Grouper(
+                        freq=muestreo,
+                        key='Resample')).mean().interpolate(
+                    method='linear',
+                    limit_direction='forward',
+                    axis=0)
+                for channel in channels[i]:
+                    mean_value = df[channel].mean()
+                    df[channel].fillna(value=mean_value, inplace=True)
+
+                df['unixtime'] = df.index.to_series().apply(
+                    lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
                 #ts_df.index = ts_df['unixtime']
                 #df = pd.concat([df,ts_df],ignore_index = False)
+
+                df = concatDf(
+                    df,
+                    ts_df,
+                    df_vacio,
+                    muestreo,
+                    hz[i],
+                    muestreoN,
+                    channels[i])
+                if(aplicaSeries):
                 
-                df = concatDf(df,ts_df,df_vacio, muestreo, hz[i], muestreoN, channels[i])
-                
+                    #TIMESERIES            
+                    df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
+                    df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
+                    df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
+                    df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
+                    df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
+
+                    channels[i] += series;
                 ts = df["unixtime"].values
                 x = df[channels[i]].values.T
-                ts_list[i] = ts;
-                x_ret[i] = x;
+                ts_list[i] = ts
+                x_ret[i] = x
         else:
-            df = pd.DataFrame();
+            df = pd.DataFrame()
             df['unixtime'] = pd.Series(ts_list[i])
             for channel in range(len(channels[i])):
-                df[channels[i][channel]] = pd.Series(x_ret[i][channel,:])
+                df[channels[i][channel]] = pd.Series(x_ret[i][channel, :])
 
-            
             df["Resample"] = df['unixtime'].astype('datetime64[ms]')
-            df = df.set_index('Resample')            
-            df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
-            
+            df = df.set_index('Resample')
+            df = df.reset_index().groupby(
+                pd.Grouper(
+                    freq=muestreo,
+                    key='Resample')).mean().interpolate(
+                method='linear',
+                limit_direction='forward',
+                axis=0)
+
             for channel in channels[i]:
-                mean_value=df[channel].mean()
-                df[channel].fillna(value=mean_value, inplace=True)           
+                mean_value = df[channel].mean()
+                df[channel].fillna(value=mean_value, inplace=True)
 
-            df['unixtime'] = df.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
-
+            df['unixtime'] = df.index.to_series().apply(
+                lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
 
             ts = df["unixtime"].values
             maxminunixtime = ts[0]
             minmaxunixtime = ts[len(ts) - 1]
-            
+            if(aplicaSeries):
+                
+                #TIMESERIES            
+                df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
+                df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
+                df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
+                df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
+                df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
+
+                channels[i] += series;
+
             x = df[channels[i]].values.T
-            ts_list[i] = ts;
-            x_ret[i] = x;  
-   
+            ts_list[i] = ts
+            x_ret[i] = x
+
     min_len = np.min([len(ts) for ts in ts_list])
-   
+
     ts_ret = None
     for i in range(len(paths)):
         #x_ret[i] = x_ret[i][:, :min_len]
@@ -420,107 +512,123 @@ def load_imu_new(
 
 
 def concatDf(
-    df : pd.DataFrame,
-    df_n : pd.DataFrame,
-    df_vacio : pd.DataFrame,
-    muestreo : str,
-    hzAct: int, 
+    df: pd.DataFrame,
+    df_n: pd.DataFrame,
+    df_vacio: pd.DataFrame,
+    muestreo: str,
+    hzAct: int,
     muestreoN: int,
     channels=[]
 ) -> pd.DataFrame:
-    df_vacio = df_vacio.iloc[0:0]    
-    df_vacio = pd.concat([df_vacio,df_n])
+    df_vacio = df_vacio.iloc[0:0]
+    df_vacio = pd.concat([df_vacio, df_n])
     #df_vacio = df.loc[df.unixtime.isin(df_n.unixtime)]
     #df_vacio = df.merge(df_vacio, how='inner', left_index=True, right_index=True)
     """import time
     inicio = time.time()
-    
+
     for i in range(len(df_n)):
         unixActual = str(df_n["unixtime"].iloc[i])
         dfFind = df.query(f"`unixtime` == {unixActual}")
-        
+
         if len(dfFind != 0):
             df_vacio.loc[i] = dfFind.iloc[0]
-    
+
     fin = time.time()
 
-    logger.info(f"Tiempo de Ejecución: {(fin-inicio)}!") 
+    logger.info(f"Tiempo de Ejecución: {(fin-inicio)}!")
 
-   
+
     for channel in channels:
         mean_value=df_vacio[channel].mean()
         df_vacio[channel].fillna(value=mean_value, inplace=True)   """
     df_vacio = df_n.merge(df, on="unixtime", how="outer")
     unixInicial = str(df_n["unixtime"].iloc[0])
-    unixFinal = str(df_n["unixtime"].iloc[len(df_n)-1])
-    df_vacio = df_vacio.query(f"`unixtime` >= {unixInicial} and `unixtime` <={unixFinal}")
+    unixFinal = str(df_n["unixtime"].iloc[len(df_n) - 1])
+    df_vacio = df_vacio.query(
+        f"`unixtime` >= {unixInicial} and `unixtime` <={unixFinal}")
     df_vacio["Resample"] = df_vacio['unixtime'].astype('datetime64[ms]')
-    #print(df_vacioPrueba)
+    # print(df_vacioPrueba)
     #df_vacio['Resample'] = pd.to_datetime(df_vacio.unixtime, unit='ms')
-    #print(df_vacio)
-    #exit();
+    # print(df_vacio)
+    # exit();
     df_vacio = df_vacio.set_index('Resample')
-    
-    df = df.reset_index().groupby(pd.Grouper(freq=muestreo, key='Resample')).mean().interpolate(method='linear', limit_direction='forward', axis=0)
-    
-    df_vacio['unixtime'] = df_vacio.index.to_series().apply(lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
-    
+
+    df = df.reset_index().groupby(
+        pd.Grouper(
+            freq=muestreo,
+            key='Resample')).mean().interpolate(
+        method='linear',
+        limit_direction='forward',
+        axis=0)
+
+    df_vacio['unixtime'] = df_vacio.index.to_series().apply(
+        lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
+
     for channel in channels:
-        mean_value=df_vacio[channel].mean()
+        mean_value = df_vacio[channel].mean()
         df_vacio[channel].fillna(value=mean_value, inplace=True)
-    
+
     return df_vacio
-def remuestrear (
+
+
+def remuestrear(
     xs: np.ndarray,
     unixtimes: np.ndarray,
-    maxminunixtime_ms: np.int64,    
+    maxminunixtime_ms: np.int64,
     minmaxunixtime_ms: np.int64,
 ) -> Tuple[np.ndarray, np.ndarray, np.int64]:
-  #Inicializar maxminunixtime_ms a 0
-  restInt = 0;
-  #Remuestrear unixtimes  
-  for i in range(len(unixtimes)):   
-    if(unixtimes[i] > maxminunixtime_ms):      
-      unixtimes = unixtimes[i:]
-      xs = xs[:,i:]
-      restInt = i;
-      break;
-  
-  for i in range(len(unixtimes),0,-1):
-    if(unixtimes[i-1] < minmaxunixtime_ms):
-      unixtimes= unixtimes[:i-1]
-      xs = xs[:,:i-1]
-      restInt = restInt + (i-1);
-      break;   
+    # Inicializar maxminunixtime_ms a 0
+    restInt = 0
+    # Remuestrear unixtimes
+    for i in range(len(unixtimes)):
+        if (unixtimes[i] > maxminunixtime_ms):
+            unixtimes = unixtimes[i:]
+            xs = xs[:, i:]
+            restInt = i
+            break
 
-  return xs, unixtimes, restInt
-def resample (
+    for i in range(len(unixtimes), 0, -1):
+        if (unixtimes[i - 1] < minmaxunixtime_ms):
+            unixtimes = unixtimes[:i - 1]
+            xs = xs[:, :i - 1]
+            restInt = restInt + (i - 1)
+            break
+
+    return xs, unixtimes, restInt
+
+
+def resample(
     unixtimesFinal: np.ndarray,
-    xs: np.ndarray,    
+    xs: np.ndarray,
     unixTimesActual: np.ndarray,
 ) -> Tuple[np.ndarray]:
-    xs_return = np.empty([len(xs),len(unixtimesFinal)-1]);   
+    xs_return = np.empty([len(xs), len(unixtimesFinal) - 1])
 
     for x in range(len(xs)):
         X_train = pd.DataFrame()
-        X_trainMean = pd.DataFrame();
-        data = {'unixtime':unixTimesActual, 'value':xs[x,:]};
+        X_trainMean = pd.DataFrame()
+        data = {'unixtime': unixTimesActual, 'value': xs[x, :]}
         df = pd.DataFrame(data=data, index=unixTimesActual)
-        
-        for unix in range(len(unixtimesFinal)-1): 
-            x_list = []            
-            dfMean = df.query(f"`unixtime` >= {unixtimesFinal[unix]} and `unixtime` <={unixtimesFinal[unix+1]}")
-            x_list.append(dfMean.value)
-            #Obtener Medias
-            X_train['x_mean'] = pd.Series(x_list).apply(lambda value: value.mean()) 
-            X_trainMean = pd.concat([X_trainMean,X_train],ignore_index = True)# X_trainMean.concat(X_train, ignore_index = True)   
-        xs_return[x] = X_trainMean.transpose();
 
-    return xs_return 
+        for unix in range(len(unixtimesFinal) - 1):
+            x_list = []
+            dfMean = df.query(
+                f"`unixtime` >= {unixtimesFinal[unix]} and `unixtime` <={unixtimesFinal[unix+1]}")
+            x_list.append(dfMean.value)
+            # Obtener Medias
+            X_train['x_mean'] = pd.Series(x_list).apply(
+                lambda value: value.mean())
+            # X_trainMean.concat(X_train, ignore_index = True)
+            X_trainMean = pd.concat([X_trainMean, X_train], ignore_index=True)
+        xs_return[x] = X_trainMean.transpose()
+
+    return xs_return
+
 
 def load_imu(
     paths: Union[Tuple[Path, ...], List[Path]],
-    channels = [],
+    channels=[],
     th: int = 30,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load IMU data from CSVs.
@@ -542,9 +650,8 @@ def load_imu(
     assert isinstance(paths, (tuple, list)), (
         f"the first argument `paths` expects tuple of Path, not {type(paths)}."
     )
-    
 
-    cont = 0;
+    cont = 0
     ts_ret, x_ret, ts_list = None, [], []
     for path in paths:
         df = pd.read_csv(path)
@@ -583,6 +690,7 @@ def load_imu(
 
     x_ret = np.concatenate(x_ret, axis=0)
     return ts_ret, x_ret
+
 
 def load_and_resample_scan_log(
     path: Path,

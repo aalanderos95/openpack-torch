@@ -9,6 +9,8 @@ import openpack_toolkit as optk
 import torch
 from omegaconf import DictConfig, open_dict
 from openpack_toolkit import OPENPACK_OPERATIONS
+import numpy as np
+import pandas as pd
 
 from .dataloader import (load_imu_all,load_imu_new,load_imu)
 import os
@@ -349,15 +351,18 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                             else:
                                 channels[cont] += ["temp"]
                         cont = cont + 1
-
-                
+                """ts_sess, x_sess  =  load_imu_all(
+                    paths_imu,
+                    channels,
+                    self.muestreo,
+                    hz)"""
                 ts_sess, x_sess  =  load_imu_new(
                     paths_imu,
                     pathsWOSession,
                     channels,
                     self.muestreo,
-                    hz)
-                
+                    hz,
+                    cfg.aplicaSeries)
                 if submission:
                     # For set dummy data.
                     label = np.zeros((len(ts_sess),), dtype=np.int64)
@@ -387,11 +392,45 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         self.data = data
         self.index = tuple(index)
 
-    def preprocessing(self) -> None:
-        """This method is called after ``load_dataset()`` and apply preprocessing to loaded data.
-        """
-        logger.warning("No preprocessing is applied.")
+    def ts_to_features(self,ts):
+        return pd.DataFrame(ts.progress_apply(lambda x: self.feature_extraction(x.diff().dropna()), axis=1).tolist())
 
+    def feature_extraction(self, x, n_ar_lags=10, n_qs=10):
+        # no corr() or cov() because it is a single variate time series
+        return {
+            "mean": x.mean(),
+            "median": x.median(),
+            "max": x.max(),
+            "min": x.min(),
+            "var": x.var(),
+            "mode": x.mode().iloc[0],
+            "std": x.std(),
+            "kurt": x.kurt(),
+            "skew": x.skew(),
+            # extract autocorrelations with lag from 1 to n_ar_lags
+            **{ 
+                f"ac_{i}": x.autocorr(lag=i) 
+                for i in range(1, n_ar_lags+1) 
+            },
+            # extract quantiles with spacing of 1/n_qs
+            **{ 
+                f"qs_{k}": v for k, v in
+                # rounded to remove any floating point error
+                (x.quantile((np.arange(1, n_qs)*1/n_qs).round(2))
+                    .to_dict()
+                    .items()) 
+            }
+        }
+
+    def preprocessing(self) -> None:
+        
+        for seq_dict in self.data:
+            x = seq_dict.get("data")
+            x = np.clip(x, -3, +3)
+            x = (x + 3.) / 6.
+            seq_dict["data"] = x
+
+    
     @property
     def num_classes(self) -> int:
         """Returns the number of classes
