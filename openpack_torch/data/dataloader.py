@@ -390,7 +390,7 @@ def load_imu_new(
                                     value=mean_value, inplace=True)
                             break
                 if(aplicaSeries):
-                    if len(channel[i]) > 1:
+                    if len(channels[i]) > 1:
                         #TIMESERIES            
                         df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
                         df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
@@ -438,8 +438,7 @@ def load_imu_new(
                     muestreoN,
                     channels[i])
                 if(aplicaSeries):
-                
-                    if len(channel[i]) > 1:
+                    if len(channels[i]) > 1:
                         #TIMESERIES            
                         df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
                         df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
@@ -481,7 +480,7 @@ def load_imu_new(
             maxminunixtime = ts[0]
             minmaxunixtime = ts[len(ts) - 1]
             if(aplicaSeries):
-                if len(channel[i]) > 1:
+                if len(channels[i]) > 1:
                     #TIMESERIES            
                     df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
                     df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
