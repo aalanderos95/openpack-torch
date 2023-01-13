@@ -257,6 +257,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         self.debug = debug
         self.muestreo = cfg.muestreo
         self.normalizacion = cfg.normalizacion
+        self.normalizacionStandard = cfg.normalizacionStandard
         self.load_dataset(
             cfg,
             user_session_list,
@@ -392,36 +393,6 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         self.data = data
         self.index = tuple(index)
 
-    def ts_to_features(self,ts):
-        return pd.DataFrame(ts.progress_apply(lambda x: self.feature_extraction(x.diff().dropna()), axis=1).tolist())
-
-    def feature_extraction(self, x, n_ar_lags=10, n_qs=10):
-        # no corr() or cov() because it is a single variate time series
-        return {
-            "mean": x.mean(),
-            "median": x.median(),
-            "max": x.max(),
-            "min": x.min(),
-            "var": x.var(),
-            "mode": x.mode().iloc[0],
-            "std": x.std(),
-            "kurt": x.kurt(),
-            "skew": x.skew(),
-            # extract autocorrelations with lag from 1 to n_ar_lags
-            **{ 
-                f"ac_{i}": x.autocorr(lag=i) 
-                for i in range(1, n_ar_lags+1) 
-            },
-            # extract quantiles with spacing of 1/n_qs
-            **{ 
-                f"qs_{k}": v for k, v in
-                # rounded to remove any floating point error
-                (x.quantile((np.arange(1, n_qs)*1/n_qs).round(2))
-                    .to_dict()
-                    .items()) 
-            }
-        }
-
     def preprocessing(self) -> None:
         if (self.normalizacion):
             for seq_dict in self.data:
@@ -429,7 +400,12 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                 x = np.clip(x, -3, +3)
                 x = (x + 3.) / 6.
                 seq_dict["data"] = x
-
+        elif (self.normalizacionStandard):
+            for seq_dict in self.data:
+                x = seq_dict.get("data")
+                x = torch.from_numpy(x)
+                x = StandardScaler().fit_transform(x)
+                seq_dict["data"] = x.numpy()
     
     @property
     def num_classes(self) -> int:
@@ -491,6 +467,33 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         return {"x": x, "t": t, "ts": ts}
 
 # -----------------------------------------------------------------------------
+
+class StandardScaler:
+
+    def __init__(self, mean=None, std=None, epsilon=1e-7):
+        """Standard Scaler.
+        The class can be used to normalize PyTorch Tensors using native functions. The module does not expect the
+        tensors to be of any specific shape; as long as the features are the last dimension in the tensor, the module
+        will work fine.
+        :param mean: The mean of the features. The property will be set after a call to fit.
+        :param std: The standard deviation of the features. The property will be set after a call to fit.
+        :param epsilon: Used to avoid a Division-By-Zero exception.
+        """
+        self.mean = mean
+        self.std = std
+        self.epsilon = epsilon
+
+    def fit(self, values):
+        dims = list(range(values.dim() - 1))
+        self.mean = torch.mean(values, dim=dims)
+        self.std = torch.std(values, dim=dims)
+
+    def transform(self, values):
+        return (values - self.mean) / (self.std + self.epsilon)
+
+    def fit_transform(self, values):
+        self.fit(values)
+        return self.transform(values)
 
 class OpenPackKeypoint(torch.utils.data.Dataset):
     """Dataset Class for Keypoint Data.

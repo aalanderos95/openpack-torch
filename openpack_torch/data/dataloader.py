@@ -326,7 +326,7 @@ def load_imu_new(
         'S0400.csv',
         'S0500.csv']
 
-    series = ['mean', 'std', 'max', 'min', 'median']
+    series = ['mean', 'std', 'max','min','median']
     for path in paths:
         if (os.path.exists(path)):
             df = pd.read_csv(path)
@@ -340,7 +340,7 @@ def load_imu_new(
                 df = df.reset_index(drop=True)
 
             df = df.rename(columns={"time": "unixtime"})
-
+        
             ts = df["unixtime"].values
             x = df[channels[contPaths]].values.T
 
@@ -389,18 +389,17 @@ def load_imu_new(
                                 df[channel].fillna(
                                     value=mean_value, inplace=True)
                             break
-                if (aplicaSeries):
-                    # TIMESERIES
-                    df['mean'] = df[channels[i]].mean(
-                        axis=1, numeric_only=True)
-                    df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
-                    df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
-                    df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
-                    df['median'] = df[channels[i]].median(
-                        axis=1, numeric_only=True)
+                if(aplicaSeries):
+                    if len(channel[i]) > 1:
+                        #TIMESERIES            
+                        df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
+                        df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
+                        df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
+                        df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
+                        df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
 
-                    channels[i] += series
-                    df = df.fillna(0)
+                        channels[i] += series;
+                        df = df.fillna(0)
 
                 ts = df["unixtime"].values
                 x = df[channels[i]].values.T
@@ -438,19 +437,18 @@ def load_imu_new(
                     hz[i],
                     muestreoN,
                     channels[i])
-                if (aplicaSeries):
+                if(aplicaSeries):
+                
+                    if len(channel[i]) > 1:
+                        #TIMESERIES            
+                        df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
+                        df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
+                        df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
+                        df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
+                        df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
 
-                    # TIMESERIES
-                    df['mean'] = df[channels[i]].mean(
-                        axis=1, numeric_only=True)
-                    df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
-                    df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
-                    df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
-                    df['median'] = df[channels[i]].median(
-                        axis=1, numeric_only=True)
-
-                    channels[i] += series
-                    df = df.fillna(0)
+                        channels[i] += series;
+                        df = df.fillna(0)
 
                 ts = df["unixtime"].values
                 x = df[channels[i]].values.T
@@ -482,18 +480,18 @@ def load_imu_new(
             ts = df["unixtime"].values
             maxminunixtime = ts[0]
             minmaxunixtime = ts[len(ts) - 1]
-            if (aplicaSeries):
+            if(aplicaSeries):
+                if len(channel[i]) > 1:
+                    #TIMESERIES            
+                    df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
+                    df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
+                    df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
+                    df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
+                    df['median'] = df[channels[i]].median(axis=1, numeric_only=True)
 
-                # TIMESERIES
-                df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True)
-                df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
-                df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
-                df['min'] = df[channels[i]].min(axis=1, numeric_only=True)
-                df['median'] = df[channels[i]].median(
-                    axis=1, numeric_only=True)
+                    channels[i] += series;
+                    df = df.fillna(0)
 
-                channels[i] += series
-                df = df.fillna(0)
 
             x = df[channels[i]].values.T
             ts_list[i] = ts
