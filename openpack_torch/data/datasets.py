@@ -352,17 +352,13 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                             else:
                                 channels[cont] += ["temp"]
                         cont = cont + 1
-                """ts_sess, x_sess  =  load_imu_all(
-                    paths_imu,
-                    channels,
-                    self.muestreo,
-                    hz)"""
                 ts_sess, x_sess  =  load_imu_new(
                     paths_imu,
                     pathsWOSession,
                     channels,
                     self.muestreo,
                     hz,
+                    cfg.kalman,
                     cfg.aplicaSeries)
                 if submission:
                     # For set dummy data.
