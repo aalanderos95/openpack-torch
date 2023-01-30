@@ -7,14 +7,13 @@ from logging import getLogger
 from pathlib import Path
 from typing import List, Tuple, Union
 
-from pykalman import KalmanFilter
 import numpy as np
 import pandas as pd
 
 logger = getLogger(__name__)
 
 
-def load_keypoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
+def load_keyfpoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
     """Load keypoints from JSON.
 
     Args:
@@ -294,8 +293,7 @@ def load_imu_new(
     channels=[],
     muestreoN=int,
     hz=[],
-    kalman: bool = False,
-    aplicaSeries: bool = False,
+    statistics: bool = False,
     th: int = 30,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load IMU data from CSVs.
@@ -395,15 +393,9 @@ def load_imu_new(
                                     value=mean_value, inplace=True)
                             break
                 
-                #KALMAN
-                if kalman:
-                    observation_covariance = .0015
-                    for channel in channels[i]:
-                        df[channel] = Kalman1D(df[channel].values, observation_covariance)
-                
-                if(aplicaSeries):
+                if(statistics):
                     if len(channels[i]) > 1:
-                        #TIMESERIES            
+                        #statistics            
                         df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
                         df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
                         df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
@@ -438,9 +430,7 @@ def load_imu_new(
 
                 df['unixtime'] = df.index.to_series().apply(
                     lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
-                #ts_df.index = ts_df['unixtime']
-                #df = pd.concat([df,ts_df],ignore_index = False)
-
+              
                 df = concatDf(
                     df,
                     ts_df,
@@ -450,15 +440,9 @@ def load_imu_new(
                     muestreoN,
                     channels[i])
                 
-                #KALMAN
-                if kalman:
-                    observation_covariance = .0015
-                    for channel in channels[i]:
-                        df[channel] = Kalman1D(df[channel].values, observation_covariance)
-                
-                if(aplicaSeries):
+                if(statistics):
                     if len(channels[i]) > 1:
-                        #TIMESERIES            
+                        #statistics            
                         df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
                         df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
                         df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
@@ -498,13 +482,10 @@ def load_imu_new(
             ts = df["unixtime"].values
             maxminunixtime = ts[0]
             minmaxunixtime = ts[len(ts) - 1]
-            if kalman:
-                    observation_covariance = .0015
-                    for channel in channels[i]:
-                        df[channel] = Kalman1D(df[channel].values, observation_covariance)
-            if(aplicaSeries):
+            
+            if(statistics):
                 if len(channels[i]) > 1:
-                    #TIMESERIES            
+                    #statistics            
                     df['mean'] = df[channels[i]].mean(axis=1, numeric_only=True);
                     df['std'] = df[channels[i]].std(axis=1, numeric_only=True)
                     df['max'] = df[channels[i]].max(axis=1, numeric_only=True)
@@ -518,7 +499,8 @@ def load_imu_new(
             x = df[channels[i]].values.T
             ts_list[i] = ts
             x_ret[i] = x
-
+    
+   
     min_len = np.min([len(ts) for ts in ts_list])
     ts_ret = None
     for i in range(len(paths)):
@@ -539,33 +521,6 @@ def load_imu_new(
     x_ret = np.concatenate(x_ret, axis=0)
     return ts_ret, x_ret
 
-
-def normalize(train, test):
-    
-    train_input_mean = train.signal.mean()
-    train_input_sigma = train.signal.std()
-    train['signal'] = (train.signal-train_input_mean)/train_input_sigma
-    test['signal'] = (test.signal-train_input_mean)/train_input_sigma
-
-    return train, test
-
-
-def Kalman1D(observations,damping=1):
-    # To return the smoothed time series data
-    observation_covariance = damping
-    initial_value_guess = observations[0]
-    transition_matrix = 1
-    transition_covariance = 0.1
-    initial_value_guess
-    kf = KalmanFilter(
-            initial_state_mean=initial_value_guess,
-            initial_state_covariance=observation_covariance,
-            observation_covariance=observation_covariance,
-            transition_covariance=transition_covariance,
-            transition_matrices=transition_matrix
-        )
-    pred_state, state_cov = kf.smooth(observations)
-    return pred_state
 
 def concatDf(
     df: pd.DataFrame,

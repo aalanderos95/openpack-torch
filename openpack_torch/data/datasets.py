@@ -11,7 +11,10 @@ from omegaconf import DictConfig, open_dict
 from openpack_toolkit import OPENPACK_OPERATIONS
 import numpy as np
 import pandas as pd
+import time
 
+
+from pykalman import KalmanFilter
 from .dataloader import (load_imu_all,load_imu_new,load_imu)
 import os
 logger = getLogger(__name__)
@@ -225,7 +228,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
     """
     data: List[Dict] = None
     index: Tuple[Dict] = None
-    muestreo: int = None
+    sampling: int = None
 
     def __init__(
             self,
@@ -255,9 +258,11 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         self.window = window
         self.submission = submission
         self.debug = debug
-        self.muestreo = cfg.muestreo
-        self.normalizacion = cfg.normalizacion
-        self.normalizacionStandard = cfg.normalizacionStandard
+        self.sampling = cfg.sampling
+        self.normalization = cfg.normalization
+        self.standardNormalization = cfg.standardNormalization
+        self.kalman = cfg.kalman
+
         self.load_dataset(
             cfg,
             user_session_list,
@@ -283,7 +288,6 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         #Validar si existe annotation antes de obtener datos
        
         data, index = [], []
-        import time
         inicio = time.time()
         for seq_idx, (user, session) in enumerate(user_session_list):
             with open_dict(cfg):
@@ -356,10 +360,9 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                     paths_imu,
                     pathsWOSession,
                     channels,
-                    self.muestreo,
+                    self.sampling,
                     hz,
-                    cfg.kalman,
-                    cfg.aplicaSeries)
+                    cfg.statistics)
                 if submission:
                     # For set dummy data.
                     label = np.zeros((len(ts_sess),), dtype=np.int64)
@@ -390,19 +393,59 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         self.index = tuple(index)
 
     def preprocessing(self) -> None:
-        if (self.normalizacion):
+        if self.normalization:
             for seq_dict in self.data:
                 x = seq_dict.get("data")
                 x = np.clip(x, -3, +3)
                 x = (x + 3.) / 6.
                 seq_dict["data"] = x
-        elif (self.normalizacionStandard):
+        elif self.standardNormalization:
             for seq_dict in self.data:
                 x = seq_dict.get("data")
                 x = torch.from_numpy(x)
                 x = StandardScaler().fit_transform(x)
                 seq_dict["data"] = x.numpy()
+
+        if self.kalman:
+            #KALMAN FILTER
+            inicio = time.time()
+
+            observation_covariance = .0015
+
+            contador = 0
+            for seq_dict in self.data:
+                x = seq_dict.get("data")
+                
+                for x_ in range(len(x)):
+                    print(x[x_]);
+                    x_kalman = self.Kalman1D(x[x_],observation_covariance)
+                    contador = contador +1
+                    print(x_kalman);
+                    exit();
+                seq_dict["data"] = x
+
+                
     
+            fin = time.time()
+            logger.info(f"TIEMPO KALMAN PARA {contador}: {(fin-inicio)}!") 
+    def Kalman1D(self, observations,damping=1):
+    # To return the smoothed time series data
+        observation_covariance = damping
+        initial_value_guess = observations[0]
+        transition_matrix = 1
+        transition_covariance = 0.1
+        initial_value_guess
+        kf = KalmanFilter(
+                initial_state_mean=initial_value_guess,
+                initial_state_covariance=observation_covariance,
+                observation_covariance=observation_covariance,
+                transition_covariance=transition_covariance,
+                transition_matrices=transition_matrix
+            )
+        pred_state, state_cov = kf.smooth(observations)
+        return pred_state
+
+
     @property
     def num_classes(self) -> int:
         """Returns the number of classes
