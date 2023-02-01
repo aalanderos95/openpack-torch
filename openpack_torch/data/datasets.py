@@ -1,22 +1,21 @@
 """Dataset Class for OpenPack dataset.
 """
+import os
+import time
 from logging import getLogger
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
 import openpack_toolkit as optk
+import pandas as pd
 import torch
 from omegaconf import DictConfig, open_dict
 from openpack_toolkit import OPENPACK_OPERATIONS
-import numpy as np
-import pandas as pd
-import time
-
-
 from pykalman import KalmanFilter
-from .dataloader import (load_imu_all,load_imu_new,load_imu)
-import os
+
+from .dataloader import load_imu, load_imu_all, load_imu_new
+
 logger = getLogger(__name__)
 
 
@@ -141,7 +140,6 @@ class OpenPackImu(torch.utils.data.Dataset):
         self.data = data
         self.index = tuple(index)
 
-
     def preprocessing(self) -> None:
         """This method is called after ``load_dataset()`` and apply preprocessing to loaded data.
         """
@@ -205,6 +203,7 @@ class OpenPackImu(torch.utils.data.Dataset):
         t = torch.from_numpy(t)
         ts = torch.from_numpy(ts)
         return {"x": x, "t": t, "ts": ts}
+
 
 class OpenPackImuMulti(torch.utils.data.Dataset):
     """Dataset class for IMU data.
@@ -285,8 +284,8 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
             window (int, optional): _description_. Defaults to None.
             submission (bool, optional): _description_. Defaults to False.
         """
-        #Validar si existe annotation antes de obtener datos
-       
+        # Validar si existe annotation antes de obtener datos
+
         data, index = [], []
         inicio = time.time()
         for seq_idx, (user, session) in enumerate(user_session_list):
@@ -298,7 +297,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                 cfg.dataset.annotation.path.dir,
                 cfg.dataset.annotation.path.fname
             )
-            if(os.path.exists(pathAnnotation) or submission):
+            if (os.path.exists(pathAnnotation) or submission):
                 paths_imu = []
                 channels = []
                 hz = []
@@ -318,23 +317,29 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                         hz.append(stream.frame_rate)
                         if "atr" in str(path):
                             if stream.acc in (None, True):
-                                if channels == [] or len(channels) < (cont + 1):
-                                    channels.append(["acc_x", "acc_y", "acc_z"])
+                                if channels == [] or len(
+                                        channels) < (cont + 1):
+                                    channels.append(
+                                        ["acc_x", "acc_y", "acc_z"])
                                 else:
-                                    channels[cont] += ["acc_x", "acc_y", "acc_z"]
+                                    channels[cont] += ["acc_x",
+                                                       "acc_y", "acc_z"]
                             if stream.gyro in (None, True):
-                                if channels == [] or len(channels) < (cont + 1):
-                                    channels.append(["gyro_x", "gyro_y", "gyro_z"])
+                                if channels == [] or len(
+                                        channels) < (cont + 1):
+                                    channels.append(
+                                        ["gyro_x", "gyro_y", "gyro_z"])
                                 else:
                                     channels[cont] += ["gyro_x",
-                                                    "gyro_y", "gyro_z"]
+                                                       "gyro_y", "gyro_z"]
                             if stream.quat in (None, True):
-                                if channels == [] or len(channels) < (cont + 1):
+                                if channels == [] or len(
+                                        channels) < (cont + 1):
                                     channels.append(
                                         ["quat_w", "quat_x", "quat_y", "quat_z"])
                                 else:
                                     channels[cont] += ["quat_w",
-                                                    "quat_x", "quat_y", "quat_z"]
+                                                       "quat_x", "quat_y", "quat_z"]
                         elif "acc" in str(path):
                             if channels == [] or len(channels) < (cont + 1):
                                 channels.append(["acc_x", "acc_y", "acc_z"])
@@ -356,7 +361,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                             else:
                                 channels[cont] += ["temp"]
                         cont = cont + 1
-                ts_sess, x_sess  =  load_imu_new(
+                ts_sess, x_sess = load_imu_new(
                     paths_imu,
                     pathsWOSession,
                     channels,
@@ -374,7 +379,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                     df_label = optk.data.load_and_resample_operation_labels(
                         path, ts_sess, classes=self.classes)
                     label = df_label["act_idx"].values
-            
+
                 data.append({
                     "user": user,
                     "session": session,
@@ -385,10 +390,10 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
 
                 seq_len = ts_sess.shape[0]
                 index += [dict(seq=seq_idx, seg=seg_idx, pos=pos)
-                            for seg_idx, pos in enumerate(range(0, seq_len, window))]
-        
+                          for seg_idx, pos in enumerate(range(0, seq_len, window))]
+
         fin = time.time()
-        logger.info(f"Tiempo de Ejecución: {(fin-inicio)}!") 
+        logger.info(f"Tiempo de Ejecución: {(fin-inicio)}!")
         self.data = data
         self.index = tuple(index)
 
@@ -396,8 +401,14 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
         if self.normalization:
             for seq_dict in self.data:
                 x = seq_dict.get("data")
-                x = np.clip(x, -3, +3)
-                x = (x + 3.) / 6.
+
+                for xVal in range(len(x)):
+                    df = pd.DataFrame(data=x[xVal],
+                                      columns=["value"])
+
+                    df["value"] = (df["value"] - df["value"].min()) / \
+                        (df["value"].max() - df["value"].min())
+                    x[xVal] = df.values.T
                 seq_dict["data"] = x
         elif self.standardNormalization:
             for seq_dict in self.data:
@@ -407,7 +418,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
                 seq_dict["data"] = x.numpy()
 
         if self.kalman:
-            #KALMAN FILTER
+            # KALMAN FILTER
             inicio = time.time()
 
             observation_covariance = .0015
@@ -415,36 +426,34 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
             contador = 0
             for seq_dict in self.data:
                 x = seq_dict.get("data")
-                
+
                 for x_ in range(len(x)):
-                    print(x[x_]);
-                    x_kalman = self.Kalman1D(x[x_],observation_covariance)
-                    contador = contador +1
-                    print(x_kalman);
-                    exit();
+                    print(x[x_])
+                    x_kalman = self.Kalman1D(x[x_], observation_covariance)
+                    contador = contador + 1
+                    print(x_kalman)
+                    exit()
                 seq_dict["data"] = x
 
-                
-    
             fin = time.time()
-            logger.info(f"TIEMPO KALMAN PARA {contador}: {(fin-inicio)}!") 
-    def Kalman1D(self, observations,damping=1):
-    # To return the smoothed time series data
+            logger.info(f"TIEMPO KALMAN PARA {contador}: {(fin-inicio)}!")
+
+    def Kalman1D(self, observations, damping=1):
+        # To return the smoothed time series data
         observation_covariance = damping
         initial_value_guess = observations[0]
         transition_matrix = 1
         transition_covariance = 0.1
         initial_value_guess
         kf = KalmanFilter(
-                initial_state_mean=initial_value_guess,
-                initial_state_covariance=observation_covariance,
-                observation_covariance=observation_covariance,
-                transition_covariance=transition_covariance,
-                transition_matrices=transition_matrix
-            )
+            initial_state_mean=initial_value_guess,
+            initial_state_covariance=observation_covariance,
+            observation_covariance=observation_covariance,
+            transition_covariance=transition_covariance,
+            transition_matrices=transition_matrix
+        )
         pred_state, state_cov = kf.smooth(observations)
         return pred_state
-
 
     @property
     def num_classes(self) -> int:
@@ -507,6 +516,7 @@ class OpenPackImuMulti(torch.utils.data.Dataset):
 
 # -----------------------------------------------------------------------------
 
+
 class StandardScaler:
 
     def __init__(self, mean=None, std=None, epsilon=1e-7):
@@ -533,6 +543,7 @@ class StandardScaler:
     def fit_transform(self, values):
         self.fit(values)
         return self.transform(values)
+
 
 class OpenPackKeypoint(torch.utils.data.Dataset):
     """Dataset Class for Keypoint Data.
