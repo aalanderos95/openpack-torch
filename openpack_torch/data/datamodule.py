@@ -8,10 +8,14 @@ import copy
 from logging import getLogger
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import pytorch_lightning as pl
 import torch
+import torchvision.transforms as transforms
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
+
+from .loadData import ObtenerDataSet
 
 logger = getLogger(__name__)
 
