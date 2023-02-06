@@ -40,6 +40,7 @@ class OpenPackBaseDataModule(pl.LightningDataModule):
             self.batch_size = cfg.train.debug.batch_size
         else:
             self.batch_size = cfg.train.batch_size
+
     def get_kwargs_for_datasets(self, stage: Optional[str] = None) -> Dict:
         """Build a kwargs to initialize dataset class. This method is called in ``setup()``.
 
@@ -161,4 +162,202 @@ class OpenPackBaseDataModule(pl.LightningDataModule):
                     shuffle=False,
                     num_workers=self.cfg.train.num_workers)
             )
+        return dataloaders
+
+
+class OpenPackImagesBaseDataModule(pl.LightningDataModule):
+    """Base class of PyTorch Lightning DataModule.
+    A datamodule is a shareable, reusable class that encapsulates all the steps needed to process
+    data:
+
+    Attributes:
+        dataset_class (torch.utils.data.Dataset): dataset class. this variable is call to create
+            dataset instances.
+        cfg (DictConfig): config object. The all parameters used to initialuze dataset class should
+            be included in this object.
+        batch_size (int): batch size.
+        debug (bool): If True, enable debug mode.
+    """
+    dataset_class: torch.utils.data.Dataset
+
+    def __init__(self, cfg: DictConfig):
+        super().__init__()
+        self.cfg = cfg
+
+        self.debug = cfg.debug
+        if cfg.debug:
+            self.batch_size = cfg.train.debug.batch_size
+        else:
+            self.batch_size = cfg.train.batch_size
+
+        trainDir, labelsTrain, valDir, labelsVal, testDir, labelsTest, submissionDir, labelsSubmission = ObtenerDataSet(
+            cfg, cfg.nameActivitiesFile, f"{cfg.sampling}Hz")
+
+        self.trainDir = trainDir
+        self.labelsTrain = labelsTrain
+        self.valDir = valDir
+        self.labelsVal = labelsVal
+        self.testDir = testDir
+        self.labelsTest = labelsTest
+        self.submissionDir = submissionDir
+        self.labelsSubmission = labelsSubmission
+        self.resize = cfg.resize
+
+    def get_kwargs_for_datasets(self, stage: Optional[str] = None) -> Dict:
+        """Build a kwargs to initialize dataset class. This method is called in ``setup()``.
+
+        Args:
+            stage (str, optional): dataset type. {train, validate, test, submission}.
+
+        Example:
+
+            ::
+
+                def get_kwargs_for_datasets(self) -> Dict:
+                    kwargs = {
+                        "window": self.cfg.train.window,
+                        "debug": self.cfg.debug,
+                    }
+                    return kwargs
+
+        Returns:
+            Dict:
+        """
+        raise NotImplementedError()
+
+    def _init_datasets(
+        self,
+        stage: str,
+    ) -> Dict[str, torch.utils.data.Dataset]:
+        """Returns list of initialized dataset object.
+
+        Args:
+            rootdir (Path): _description_
+            user_session (Tuple[int, int]): _description_
+            kwargs (Dict): _description_
+
+        Returns:
+            Dict[str, torch.utils.data.Dataset]: dataset objects
+        """
+        means = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        """test_transform = transforms.Compose([transforms.ToPILImage(),
+                                            transforms.ToTensor(),
+                                            transforms.Normalize(means,std)])"""
+
+        if self.resize:
+            train_transform = transforms.Compose([transforms.ToPILImage(),
+                                                  transforms.Resize((224, 224)),
+                                                  transforms.ToTensor()])
+
+            test_transform = transforms.Compose([transforms.ToPILImage(),
+                                                 transforms.Resize((224, 224)),
+                                                 transforms.ToTensor()])
+
+            valid_transform = transforms.Compose([transforms.ToPILImage(),
+                                                  transforms.Resize((224, 224)),
+                                                  transforms.ToTensor()])
+
+            submission_transform = transforms.Compose([transforms.ToPILImage(),
+                                                       transforms.Resize((224, 224)),
+                                                       transforms.ToTensor()])
+        else:
+            train_transform = transforms.Compose([transforms.ToPILImage(),
+                                                  transforms.ToTensor()])
+
+            test_transform = transforms.Compose([transforms.ToPILImage(),
+                                                 transforms.ToTensor()])
+
+            valid_transform = transforms.Compose([transforms.ToPILImage(),
+                                                  transforms.ToTensor()])
+
+            submission_transform = transforms.Compose([transforms.ToPILImage(),
+                                                       transforms.ToTensor()])
+
+        dataset = []
+        if stage == "train":
+            dataset = self.dataset_class(
+                self.labelsTrain, self.trainDir, train_transform)
+        elif stage == "validate":
+            dataset = self.dataset_class(
+                self.labelsVal, self.valDir, valid_transform)
+        elif stage == "test":
+            dataset = self.dataset_class(
+                self.labelsTest, self.testDir, test_transform)
+        elif stage == "submission":
+            dataset = self.dataset_class(
+                self.labelsSubmission,
+                self.submissionDir,
+                submission_transform)
+
+        return dataset
+
+    def setup(self, stage: Optional[str] = None) -> None:
+        split = self.cfg.dataset.split
+
+        if stage in (None, "fit"):
+            self.op_train = self._init_datasets("train")
+        else:
+            self.op_train = None
+
+        if stage in (None, "fit", "validate"):
+            self.op_val = self._init_datasets("validate")
+        else:
+            self.op_val = None
+
+        if stage in (None, "test"):
+            self.op_test = self._init_datasets("test")
+        else:
+            self.op_test = None
+
+        if stage in (None, "submission"):
+            self.op_submission = self._init_datasets("submission")
+        elif stage == "test-on-submission":
+            self.op_submission = self._init_datasets("submission")
+        else:
+            self.op_submission = None
+
+        logger.info(f"dataset[train]: {self.op_train}")
+        logger.info(f"dataset[val]: {self.op_val}")
+        logger.info(f"dataset[test]: {self.op_test}")
+        logger.info(f"dataset[submission]: {self.op_submission}")
+
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.op_train,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.cfg.train.num_workers)
+
+    def val_dataloader(self) -> List[DataLoader]:
+        dataloaders = []
+        dataloaders.append(
+            DataLoader(
+                self.op_val,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.cfg.train.num_workers)
+        )
+        return dataloaders
+
+    def test_dataloader(self) -> List[DataLoader]:
+        dataloaders = []
+        dataloaders.append(
+            DataLoader(
+                self.op_test,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.cfg.train.num_workers)
+        )
+        return dataloaders
+
+    def submission_dataloader(self) -> List[DataLoader]:
+        dataloaders = []
+        dataloaders.append(
+            DataLoader(
+                self.op_submission,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.cfg.train.num_workers)
+        )
         return dataloaders

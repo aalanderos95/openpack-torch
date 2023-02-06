@@ -1,7 +1,8 @@
 from . import datasets
-from .datamodule import OpenPackBaseDataModule
+from .datamodule import OpenPackBaseDataModule, OpenPackImagesBaseDataModule
 
 __all__ = [
     "datasets",
-    "OpenPackBaseDataModule"
+    "OpenPackBaseDataModule",
+    "OpenPackImagesBaseDataModule"
 ]

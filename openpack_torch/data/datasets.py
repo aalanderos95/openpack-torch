@@ -6,6 +6,7 @@ from logging import getLogger
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import matplotlib.image as img
 import numpy as np
 import openpack_toolkit as optk
 import pandas as pd
@@ -703,4 +704,50 @@ class OpenPackKeypoint(torch.utils.data.Dataset):
         x = torch.from_numpy(x)
         t = torch.from_numpy(t)
         ts = torch.from_numpy(ts)
+        return {"x": x, "t": t, "ts": ts}
+
+
+class OpenPackImages(torch.utils.data.Dataset):
+
+    def __init__(self, data, path, transform=None):
+        super().__init__()
+        self.data = data
+        self.path = path
+        self.transform = transform
+
+    @property
+    def num_classes(self) -> int:
+        """Returns the number of classes
+
+        Returns:
+            int
+        """
+        return len(self.classes)
+
+    def __str__(self) -> str:
+        s = (
+            "OpenPackImages()"
+        )
+        return s
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __iter__(self):
+        return self
+
+    def __getitem__(self, index):
+        img_name = self.data["id"].iloc[index]
+        t = self.data["activity"].iloc[index]
+        ts = self.data["unixtime"].iloc[index]
+
+        img_path = os.path.join(self.path, img_name)
+        x = img.imread(img_path)
+
+        if self.transform is not None:
+            x = self.transform(x)
+
+        x = x
+        t = t
+        ts = ts
         return {"x": x, "t": t, "ts": ts}
