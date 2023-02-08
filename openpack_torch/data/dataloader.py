@@ -1,5 +1,6 @@
 """``dataloader`` provide utility function to load files saved in OpenPack dataset format.
 """
+import cv2 as cv
 import datetime as dt
 import json
 import os
@@ -43,6 +44,47 @@ def load_keyfpoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
     X = np.stack(X, axis=1)
 
     return T, X
+
+def loadImage( 
+    paths: Union[Tuple[Path, ...], List[Path]],
+    names = [],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Load keypoints from JSON.
+
+    Args:
+        path (Path): path to a target JSON file.
+    Returns:
+        Tuple[np.ndarray, np.ndarray]:
+            * T (np.ndarray): unixtime for each frame.
+            * X (np.ndarray): xy-cordinates of keypoints. and the score of corresponding
+                prediction. shape=(3, FRAMES, NODE). The first dim is corresponding to
+                [x-cordinate, y-cordinate, score].
+    Todo:
+        * Handle the JSON file that contains keypoints from multiple people.
+    """
+    X = []
+    T = []
+    contPaths = 0;
+    df = pd.DataFrame(columns=["unixtime"])
+    for path in paths:
+        img = cv.imread(path)
+        X.append(img)
+        
+        name = names[contPaths].replace(".jpeg","")
+        from datetime import datetime
+        import time
+
+        d = datetime(int(name[:4]),int(name[4:6]),int(name[6:8]),int(name[9:11]),int(name[11:13]),int(name[13:15]),int(name[16:22]))
+        unix = datetime.timestamp(d)
+        new_row = pd.DataFrame({'unixtime':np.int64(str(unix).replace(".","")[:13])}, index=[0])
+       
+        df = pd.concat([df, new_row], ignore_index = True)
+        contPaths = contPaths + 1
+
+    T = df["unixtime"].values
+    print(T)
+    
+    return T,X
 
 
 def load_imu_all(
@@ -358,7 +400,8 @@ def load_imu_new(
             contPaths = contPaths + 1
 
         
-
+      
+    
     #RESAMPLE
     maxminunixtime = 0
     minmaxunixtime = 0
@@ -517,8 +560,9 @@ def load_imu_new(
                 f"but difference smaller than th={th} is allowed."
                 f"num path is {paths[i]}."
             )
-
+    
     x_ret = np.concatenate(x_ret, axis=0)
+   
     return ts_ret, x_ret
 
 
