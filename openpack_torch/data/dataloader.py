@@ -433,7 +433,7 @@ def load_imu_new(
                             for channel in channels[i]:
                                 mean_value = dfNew[channel].mean()
                                 df[channel].fillna(
-                                    value=mean_value, inplace=True)
+                                    value=0, inplace=True)
                             break
                 
                 if(statistics):
@@ -469,7 +469,7 @@ def load_imu_new(
                     axis=0)
                 for channel in channels[i]:
                     mean_value = df[channel].mean()
-                    df[channel].fillna(value=mean_value, inplace=True)
+                    df[channel].fillna(value=0, inplace=True)
 
                 df['unixtime'] = df.index.to_series().apply(
                     lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
@@ -517,7 +517,7 @@ def load_imu_new(
 
             for channel in channels[i]:
                 mean_value = df[channel].mean()
-                df[channel].fillna(value=mean_value, inplace=True)
+                df[channel].fillna(value=0, inplace=True)
 
             df['unixtime'] = df.index.to_series().apply(
                 lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
