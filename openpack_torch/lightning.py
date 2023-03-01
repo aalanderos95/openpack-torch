@@ -37,6 +37,12 @@ class BaseLightningModule(pl.LightningModule):
                 lr=self.cfg.train.optimizer.lr,
                 weight_decay=self.cfg.train.optimizer.weight_decay,
             )
+        elif self.cfg.train.optimizer.type == "SGD":
+            optimizer = torch.optim.SGD(
+                self.parameters(),
+                lr=self.cfg.train.optimizer.lr,
+                momentum=self.cfg.train.optimizer.momentum,
+            )
         else:
             raise ValueError(
                 f"{self.cfg.train.optimizer.type} is not supported.")
@@ -91,6 +97,15 @@ class BaseLightningModule(pl.LightningModule):
             dataloader_idx: int = 0) -> Dict:
         return self.training_step(batch, batch_idx)
 
+    def adjust_learning_rate(self):
+        #Se ajustaran el learning rate dependiendo la epoca contenida en params
+        opt = self.optimizers()
+        current_epoch = self.current_epoch
+        for epoch, lr, wd in self.cfg.learningData:
+            if(epoch == current_epoch):
+                opt.param_groups[0]['lr'] = lr;
+                opt.param_groups[0]['weight_decay'] = wd;
+        
     def validation_epoch_end(self, outputs):
         if isinstance(outputs[0], list):
             # When multiple dataloader is used.
@@ -106,9 +121,15 @@ class BaseLightningModule(pl.LightningModule):
                 avg = torch.stack(vals).mean().item()
                 log[f"val/{key}"] = avg
         self.log_dict["val"].append(log)
-
+        
+        
+        if(self.cfg.dynamicLr):
+            self.adjust_learning_rate()
         self.print_latest_metrics()
+        
 
+
+        
         if len(self.log_dict["val"]) > 0:
             val_loss = self.log_dict["val"][-1].get("val/loss", None)
             self.log(
@@ -124,6 +145,7 @@ class BaseLightningModule(pl.LightningModule):
 
     def test_epoch_end(self, outputs):
         keys = tuple(outputs[0].keys())
+       
         results = {key: [] for key in keys}
         for d in outputs:
             for key in d.keys():
@@ -144,7 +166,10 @@ class BaseLightningModule(pl.LightningModule):
             "Epoch[{epoch:0=3}]"
             " TRAIN: loss={train_loss:>7.4f}, acc={train_acc:>7.4f}"
             " | VAL: loss={val_loss:>7.4f}, acc={val_acc:>7.4f}"
+            " | LR: {lr:>7.4f}"
+            " | WD: {wd:>7.4f}"
         )
+        opt = self.optimizers()
         logger.info(
             log_template.format(
                 epoch=self.current_epoch,
@@ -152,8 +177,11 @@ class BaseLightningModule(pl.LightningModule):
                 train_acc=train_log.get("train/acc", -1),
                 val_loss=val_log.get("val/loss", -1),
                 val_acc=val_log.get("val/acc", -1),
+                lr=opt.param_groups[0]['lr'],
+                wd=opt.param_groups[0]['weight_decay'],
             )
         )
+
 
 
 class BaseImageLightningModule(pl.LightningModule):
@@ -197,7 +225,7 @@ class BaseImageLightningModule(pl.LightningModule):
             torch.Tensor: _description_
         """
         preds = F.softmax(y, dim=1)
-
+    
         (batch_size, num_classes) = preds.size()
         preds_flat = preds.permute(1, 0).reshape(
             num_classes, batch_size)
@@ -269,7 +297,7 @@ class BaseImageLightningModule(pl.LightningModule):
 
     def test_epoch_end(self, outputs):
         keys = tuple(outputs[0].keys())
-
+       
         results = {key: [] for key in keys}
         for d in outputs:
             for key in d.keys():
