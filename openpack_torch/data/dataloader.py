@@ -1,6 +1,5 @@
 """``dataloader`` provide utility function to load files saved in OpenPack dataset format.
 """
-import cv2 as cv
 import datetime as dt
 import json
 import os
@@ -8,6 +7,7 @@ from logging import getLogger
 from pathlib import Path
 from typing import List, Tuple, Union
 
+import cv2 as cv
 import numpy as np
 import pandas as pd
 
@@ -71,8 +71,8 @@ def loadImage(
         X.append(img)
         
         name = names[contPaths].replace(".jpeg","")
-        from datetime import datetime
         import time
+        from datetime import datetime
 
         d = datetime(int(name[:4]),int(name[4:6]),int(name[6:8]),int(name[9:11]),int(name[11:13]),int(name[13:15]),int(name[16:22]))
         unix = datetime.timestamp(d)
@@ -400,8 +400,6 @@ def load_imu_new(
             contPaths = contPaths + 1
 
         
-      
-    
     #RESAMPLE
     maxminunixtime = 0
     minmaxunixtime = 0
@@ -433,7 +431,7 @@ def load_imu_new(
                             for channel in channels[i]:
                                 mean_value = dfNew[channel].mean()
                                 df[channel].fillna(
-                                    value=0, inplace=True)
+                                    value=mean_value, inplace=True)
                             break
                 
                 if(statistics):
@@ -469,7 +467,7 @@ def load_imu_new(
                     axis=0)
                 for channel in channels[i]:
                     mean_value = df[channel].mean()
-                    df[channel].fillna(value=0, inplace=True)
+                    df[channel].fillna(value=mean_value, inplace=True)
 
                 df['unixtime'] = df.index.to_series().apply(
                     lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
@@ -517,7 +515,7 @@ def load_imu_new(
 
             for channel in channels[i]:
                 mean_value = df[channel].mean()
-                df[channel].fillna(value=0, inplace=True)
+                df[channel].fillna(value=mean_value, inplace=True)
 
             df['unixtime'] = df.index.to_series().apply(
                 lambda x: np.int64(str(pd.Timestamp(x).value)[0:13]))
